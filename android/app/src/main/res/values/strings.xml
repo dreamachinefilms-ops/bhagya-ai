@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bhagya.ai</string>
+    <string name="title_activity_main">Bhagya.ai</string>
+    <string name="package_name">com.dreamachinefilms.bhagya</string>
+    <string name="custom_url_scheme">com.dreamachinefilms.bhagya</string>
+</resources>
