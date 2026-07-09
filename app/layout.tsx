@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const bhagyaFont = Inter({
+  display: "swap",
   subsets: ["latin"],
+  variable: "--font-bhagya",
 });
 
 const geistMono = Geist_Mono({
@@ -35,7 +36,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${bhagyaFont.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-[100svh] flex-col">{children}</body>
     </html>

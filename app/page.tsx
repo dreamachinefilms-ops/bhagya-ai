@@ -46,6 +46,12 @@ type BirthDetailsStatus = {
   code?: string;
 };
 
+type LandingStageSize = {
+  scale: number;
+  left: number;
+  top: number;
+};
+
 const PENDING_QUESTION_KEY = "bhagya_pending_question_v1";
 
 const services: {
@@ -121,6 +127,53 @@ function getRealisticReplyDelay(answer: string) {
   return baseDelay + readingDelay + randomDelay;
 }
 
+function useLandingStageSize() {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [stage, setStage] = useState<LandingStageSize>({
+    scale: 1,
+    left: 0,
+    top: 0,
+  });
+
+  useEffect(() => {
+    const element = viewportRef.current;
+
+    if (!element) return;
+
+    const update = () => {
+      const width = element.clientWidth;
+      const height = element.clientHeight;
+      const baseWidth = 360;
+      const baseHeight = 800;
+      const scale = Math.min(width / baseWidth, height / baseHeight, 1.15);
+
+      setStage({
+        scale,
+        left: Math.max(0, (width - baseWidth * scale) / 2),
+        top: Math.max(0, (height - baseHeight * scale) / 2),
+      });
+    };
+
+    const observer = new ResizeObserver(update);
+
+    observer.observe(element);
+    window.visualViewport?.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    update();
+
+    return () => {
+      observer.disconnect();
+      window.visualViewport?.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
+  }, []);
+
+  return {
+    viewportRef,
+    ...stage,
+  };
+}
+
 function timeAgo(ts: number, labels: UiText["timeAgo"]) {
   const diff = (Date.now() - ts) / 1000;
   if (diff < 60) return labels.justNow;
@@ -159,6 +212,8 @@ export default function Home() {
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const hasStarted = Boolean(activeChatId);
   const isPreparingBirthProfile = isLoggedIn && isCheckingBirthProfile;
+  const showReferenceMobileLanding =
+    !isLoggedIn && !hasStarted && !isPreparingBirthProfile;
   const selectedApi = services.find((s) => s.id === selectedService)?.api;
   const t = UI_TEXT[selectedLanguage];
   const selectedLanguageLabel =
@@ -773,7 +828,11 @@ export default function Home() {
   return (
     <main className="relative min-h-[100svh] overflow-hidden bg-[#020817] text-white">
       {/* ── Mandala background ── */}
-      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+      <div
+        className={`pointer-events-none fixed inset-0 z-0 overflow-hidden ${
+          showReferenceMobileLanding ? "hidden min-[600px]:block" : ""
+        }`}
+      >
         <div className="bhagya-mandala-stage absolute left-1/2">
           {/* Outer orbit */}
           <div
@@ -817,11 +876,15 @@ export default function Home() {
       </div>
 
       {/* ── Subtle star field only, no floating constellations ── */}
-      <StarField />
+      <StarField
+        className={showReferenceMobileLanding ? "hidden min-[600px]:block" : ""}
+      />
 
       {/* ── Subtle vignette overlay ── */}
       <div
-        className="pointer-events-none absolute inset-0 z-0"
+        className={`pointer-events-none absolute inset-0 z-0 ${
+          showReferenceMobileLanding ? "hidden min-[600px]:block" : ""
+        }`}
         style={{
           background:
             "radial-gradient(ellipse at center, transparent 30%, rgba(2,8,23,0.72) 100%)",
@@ -1009,8 +1072,29 @@ export default function Home() {
       {/* ══════════════════════════════════════════
           LANDING / FIRST SCREEN
       ══════════════════════════════════════════ */}
+      {!hasStarted && !isPreparingBirthProfile && !isLoggedIn && (
+        <div className="block min-[600px]:hidden">
+          <UniversalMobileLanding
+            question={question}
+            setQuestion={setQuestion}
+            handleAsk={handleAsk}
+            isLoading={isLoading || isCheckingAuth}
+            inputRef={inputRef}
+            selectedService={selectedService}
+            setSelectedService={setSelectedService}
+            selectedLanguage={selectedLanguage}
+            setSelectedLanguage={setSelectedLanguage}
+            t={t}
+          />
+        </div>
+      )}
+
       {!hasStarted && !isPreparingBirthProfile && (
-        <div className="bhagya-landing relative z-10 flex min-h-[100svh] flex-col overflow-hidden">
+        <div
+          className={`bhagya-landing relative z-10 min-h-[100svh] flex-col overflow-hidden ${
+            !isLoggedIn ? "hidden min-[600px]:flex" : "flex"
+          }`}
+        >
           {chats.length > 0 && (
             <button
               onClick={() => setIsSidebarOpen(true)}
@@ -1528,6 +1612,195 @@ export default function Home() {
 }
 
 /* ── Rail icon wrapper ── */
+function UniversalMobileLanding({
+  question,
+  setQuestion,
+  handleAsk,
+  isLoading,
+  inputRef,
+  selectedService,
+  setSelectedService,
+  selectedLanguage,
+  setSelectedLanguage,
+  t,
+}: {
+  question: string;
+  setQuestion: (value: string) => void;
+  handleAsk: () => void;
+  isLoading: boolean;
+  inputRef: RefObject<HTMLInputElement | null>;
+  selectedService: ServiceType;
+  setSelectedService: (service: ServiceType) => void;
+  selectedLanguage: LanguageCode;
+  setSelectedLanguage: (language: LanguageCode) => void;
+  t: UiText;
+}) {
+  const { viewportRef, scale, left, top } = useLandingStageSize();
+  const isEnglish = selectedLanguage === "english";
+  const badge = isEnglish
+    ? "Astrology \u00b7 Numerology \u00b7 Tarot \u00b7 Palmistry"
+    : t.badge;
+  const inputPlaceholder = isEnglish
+    ? "Ask about career, love, marriage, kundli\u2026"
+    : t.inputPlaceholder;
+
+  return (
+    <div className="bhagya-universal-screen">
+      <div className="bhagya-universal-viewport">
+        <div ref={viewportRef} className="bhagya-universal-measure">
+          <div
+            className="bhagya-reference-stage"
+            style={{
+              transform: `translate3d(${left}px, ${top}px, 0) scale(${scale})`,
+            }}
+          >
+            <ReferenceLandingBackground />
+
+            <header className="bhagya-reference-header">
+              <Link href="/" className="bhagya-reference-brand">
+                <div className="bhagya-reference-logo">
+                  <span className="text-base">*</span>
+                </div>
+
+                <div className="min-w-0">
+                  <p className="bhagya-reference-brand-title">{t.appName}</p>
+                  <p className="bhagya-reference-brand-subtitle">
+                    {t.tagline}
+                  </p>
+                </div>
+              </Link>
+
+              <div className="bhagya-reference-actions">
+                <div className="bhagya-reference-language">
+                  <LanguageSelector
+                    selectedLanguage={selectedLanguage}
+                    setSelectedLanguage={setSelectedLanguage}
+                  />
+                </div>
+
+                <Link href="/login" className="bhagya-reference-signin">
+                  {t.signIn}
+                </Link>
+              </div>
+            </header>
+
+            <section className="bhagya-reference-hero">
+              <div className="bhagya-reference-badge">
+                <span className="bhagya-reference-badge-dot" />
+                {badge}
+              </div>
+
+              <h1
+                className={`bhagya-reference-title ${
+                  isEnglish ? "" : "bhagya-reference-title-translated"
+                }`}
+              >
+                <span className={`block ${isEnglish ? "whitespace-nowrap" : ""}`}>
+                  {t.headlineLine1}
+                </span>
+                <span
+                  className={`block text-sky-300 ${
+                    isEnglish ? "whitespace-nowrap" : ""
+                  }`}
+                >
+                  {t.headlineLine2}
+                </span>
+              </h1>
+
+              <p className="bhagya-reference-subtitle">{t.subtitle}</p>
+
+              <div className="bhagya-reference-input">
+                <button
+                  type="button"
+                  className="bhagya-reference-plus"
+                  aria-label={t.attach}
+                >
+                  <svg
+                    width="17"
+                    height="17"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={question}
+                  onChange={(event) => setQuestion(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) handleAsk();
+                  }}
+                  placeholder={inputPlaceholder}
+                  className="bhagya-reference-input-field"
+                />
+
+                <button
+                  type="button"
+                  onClick={handleAsk}
+                  disabled={isLoading}
+                  className="bhagya-reference-ask disabled:cursor-not-allowed disabled:opacity-65"
+                >
+                  {isLoading ? <LoadingDots /> : t.ask}
+                </button>
+              </div>
+
+              <div className="bhagya-reference-services">
+                {services.map((service) => {
+                  const active = selectedService === service.id;
+
+                  return (
+                    <button
+                      key={service.id}
+                      type="button"
+                      onClick={() => setSelectedService(service.id)}
+                      className={`bhagya-reference-service ${
+                        active ? "bhagya-reference-service-active" : ""
+                      }`}
+                    >
+                      <span>{service.glyph}</span>
+                      {t.services[service.id]}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReferenceLandingBackground() {
+  return (
+    <>
+      <StarField />
+
+      <div className="bhagya-reference-mandala-stage">
+        <div className="bhagya-reference-mandala-layer bhagya-reference-mandala-outer" />
+        <div className="bhagya-reference-mandala-layer bhagya-reference-mandala-inner" />
+        <div className="bhagya-reference-mandala-layer bhagya-reference-mandala-main" />
+        <div className="bhagya-reference-mandala-layer bhagya-reference-mandala-glow" />
+      </div>
+
+      <div
+        className="pointer-events-none absolute inset-0 z-[1]"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, transparent 30%, rgba(2,8,23,0.72) 100%)",
+        }}
+      />
+    </>
+  );
+}
+
 function RailIcon({ children }: { children: ReactNode }) {
   return <span className="flex items-center justify-center">{children}</span>;
 }
@@ -1694,7 +1967,7 @@ const BG_STARS = Array.from({ length: 140 }, () => ({
   offset: Math.random() * Math.PI * 2,
 }));
 
-function StarField() {
+function StarField({ className = "" }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<number>(0);
 
@@ -1755,7 +2028,7 @@ function StarField() {
   return (
     <canvas
       ref={canvasRef}
-      className="pointer-events-none absolute inset-0 z-0 h-full w-full"
+      className={`pointer-events-none absolute inset-0 z-0 h-full w-full ${className}`}
     />
   );
 }

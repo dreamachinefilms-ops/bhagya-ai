@@ -12,7 +12,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-bhagya);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -39,7 +39,7 @@ body {
   margin: 0;
   background: #020817;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-bhagya), Arial, sans-serif;
   overscroll-behavior-y: none;
 }
 
@@ -87,5 +87,336 @@ input {
 @supports (height: 100dvh) {
   .bhagya-landing {
     min-height: 100dvh;
+  }
+}
+
+.bhagya-universal-screen {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #020817;
+}
+
+.bhagya-universal-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+.bhagya-universal-measure {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.bhagya-reference-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 360px;
+  height: 800px;
+  transform-origin: top left;
+  overflow: hidden;
+}
+
+.bhagya-reference-header {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 22px;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.bhagya-reference-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.bhagya-reference-logo {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #38bdf8, #1d4ed8);
+  box-shadow: 0 12px 28px rgba(56, 189, 248, 0.2);
+}
+
+.bhagya-reference-brand-title {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 17px;
+  letter-spacing: -0.2px;
+  color: rgba(255, 255, 255, 0.95);
+  white-space: nowrap;
+}
+
+.bhagya-reference-brand-subtitle {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 12px;
+  color: rgba(125, 211, 252, 0.72);
+  white-space: nowrap;
+}
+
+.bhagya-reference-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.bhagya-reference-language > div > button,
+.bhagya-reference-signin {
+  display: inline-flex;
+  min-width: 62px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.bhagya-reference-language > div > button {
+  padding: 0 12px;
+}
+
+.bhagya-reference-signin {
+  min-width: 72px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+}
+
+.bhagya-reference-hero {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 296px;
+  z-index: 10;
+  text-align: center;
+}
+
+.bhagya-reference-badge {
+  display: inline-flex;
+  max-width: 328px;
+  height: 39px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.1);
+  color: rgba(125, 211, 252, 0.82);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+.bhagya-reference-badge-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: #7dd3fc;
+  animation: referencePulse 1.8s ease-in-out infinite;
+}
+
+.bhagya-reference-title {
+  width: 334px;
+  margin: 19px auto 0;
+  font-size: 33px;
+  font-weight: 650;
+  line-height: 1.08;
+  letter-spacing: -1.2px;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.bhagya-reference-title-translated {
+  font-size: 29px;
+  letter-spacing: -0.6px;
+}
+
+.bhagya-reference-subtitle {
+  width: 326px;
+  margin: 14px auto 0;
+  font-size: 13px;
+  line-height: 19px;
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.bhagya-reference-input {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 82px;
+  width: 336px;
+  height: 62px;
+  align-items: center;
+  gap: 4px;
+  margin: 21px auto 0;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px);
+}
+
+.bhagya-reference-plus {
+  display: flex;
+  width: 38px;
+  height: 46px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.bhagya-reference-input-field {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: white;
+  font-size: 14px;
+  line-height: 20px;
+  outline: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bhagya-reference-input-field::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.bhagya-reference-ask {
+  display: flex;
+  width: 82px;
+  height: 50px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #38bdf8, #1d4ed8);
+  color: white;
+  font-size: 14px;
+  font-weight: 650;
+  white-space: nowrap;
+  box-shadow: 0 2px 16px rgba(56, 189, 248, 0.25);
+}
+
+.bhagya-reference-services {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  width: 336px;
+  gap: 9px;
+  margin: 12px auto 0;
+}
+
+.bhagya-reference-service {
+  display: flex;
+  width: 100%;
+  height: 54px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0 8px;
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.bhagya-reference-service-active {
+  border-color: rgba(14, 165, 233, 0.5);
+  background: rgba(14, 165, 233, 0.12);
+  color: #7dd3fc;
+}
+
+.bhagya-reference-mandala-stage {
+  position: absolute;
+  left: 180px;
+  top: 472px;
+  width: 346px;
+  height: 346px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.bhagya-reference-mandala-layer {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.bhagya-reference-mandala-main {
+  width: 330px;
+  height: 330px;
+  background-image: url("/mandala.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  filter: hue-rotate(185deg) saturate(1.6) brightness(1.15);
+  mix-blend-mode: screen;
+  opacity: 0.2;
+  animation: spinCW 180s linear infinite;
+}
+
+.bhagya-reference-mandala-inner {
+  width: 370px;
+  height: 370px;
+  border: 1px solid rgba(56, 189, 248, 0.1);
+  animation: spinCW 200s linear infinite;
+}
+
+.bhagya-reference-mandala-outer {
+  width: 418px;
+  height: 418px;
+  border: 1px solid rgba(56, 189, 248, 0.1);
+  animation: spinCCW 280s linear infinite;
+}
+
+.bhagya-reference-mandala-glow {
+  width: 252px;
+  height: 252px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.08) 0%, transparent 70%);
+}
+
+@keyframes referencePulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
