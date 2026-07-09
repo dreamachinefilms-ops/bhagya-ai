@@ -263,8 +263,10 @@ export function buildProkeralaCredentialsMissingResponse(languageCode: string) {
 
 export function buildProkeralaApiFailedResponse(languageCode: string) {
   if (languageCode === "hinglish") {
-    return "Kundli calculate karte waqt thodi problem aa rahi hai, please birth details ek baar DOB, exact time aur place ke format mein dobara share karein.";
+    return "Kundli calculate karte waqt thodi problem aa rahi hai. Please thodi der baad try karein ya apni birth profile update karein.";
   }
+
+  return "There is a problem calculating the kundli right now. Please try again in a moment or update your birth profile.";
 
   const templates: Record<string, string> = {
     hindi:
@@ -285,6 +287,6 @@ export function buildProkeralaApiFailedResponse(languageCode: string) {
 
   return (
     templates[languageCode] ||
-    "There is a problem calculating the kundli right now. Please share birth details again in DOB, exact time, and place format."
+    "There is a problem calculating the kundli right now. Please try again in a moment or update your birth profile."
   );
 }

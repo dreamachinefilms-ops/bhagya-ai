@@ -41,6 +41,11 @@ type Chat = {
   updatedAt: number;
 };
 
+type BirthDetailsStatus = {
+  complete?: boolean;
+  code?: string;
+};
+
 const PENDING_QUESTION_KEY = "bhagya_pending_question_v1";
 
 const services: {
@@ -144,12 +149,16 @@ export default function Home() {
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isCheckingBirthProfile, setIsCheckingBirthProfile] = useState(false);
+  const [hasCompleteBirthProfile, setHasCompleteBirthProfile] =
+    useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const hasStarted = Boolean(activeChatId);
+  const isPreparingBirthProfile = isLoggedIn && isCheckingBirthProfile;
   const selectedApi = services.find((s) => s.id === selectedService)?.api;
   const t = UI_TEXT[selectedLanguage];
   const selectedLanguageLabel =
@@ -270,16 +279,77 @@ export default function Home() {
   useEffect(() => {
     if (isCheckingAuth) return;
 
-    if (isLoggedIn) {
+    if (isLoggedIn && hasCompleteBirthProfile) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- load persisted chats after auth state is known
       void loadUserChats();
       return;
     }
 
-    setChats([]);
-    setActiveChatId(null);
-    setIsSidebarOpen(false);
-  }, [isCheckingAuth, isLoggedIn, loadUserChats]);
+    if (!isLoggedIn) {
+      setChats([]);
+      setActiveChatId(null);
+      setIsSidebarOpen(false);
+      setHasCompleteBirthProfile(false);
+    }
+  }, [hasCompleteBirthProfile, isCheckingAuth, isLoggedIn, loadUserChats]);
+
+  useEffect(() => {
+    if (isCheckingAuth) return;
+
+    if (!isLoggedIn) {
+      setIsCheckingBirthProfile(false);
+      setHasCompleteBirthProfile(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    async function checkBirthProfile() {
+      setIsCheckingBirthProfile(true);
+
+      const headers = await getAuthHeaders();
+
+      if (!headers) {
+        if (isMounted) {
+          setIsCheckingBirthProfile(false);
+          setHasCompleteBirthProfile(false);
+        }
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/birth-details", { headers });
+
+        if (res.status === 401) {
+          router.replace("/login?next=/");
+          return;
+        }
+
+        const data = (await res.json()) as BirthDetailsStatus;
+
+        if (!res.ok || !data.complete) {
+          router.replace("/birth-details");
+          return;
+        }
+
+        if (isMounted) {
+          setHasCompleteBirthProfile(true);
+        }
+      } catch {
+        router.replace("/birth-details");
+      } finally {
+        if (isMounted) {
+          setIsCheckingBirthProfile(false);
+        }
+      }
+    }
+
+    void checkBirthProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [getAuthHeaders, isCheckingAuth, isLoggedIn, router]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -450,11 +520,16 @@ export default function Home() {
       return;
     }
 
-    if (isCheckingAuth || isLoading) return;
+    if (isCheckingAuth || isCheckingBirthProfile || isLoading) return;
 
     if (!isLoggedIn) {
       localStorage.setItem(PENDING_QUESTION_KEY, cleanQuestion);
       router.push("/login?next=/");
+      return;
+    }
+
+    if (!hasCompleteBirthProfile) {
+      router.replace("/birth-details");
       return;
     }
 
@@ -598,6 +673,24 @@ export default function Home() {
       }
 
       const data = await res.json();
+
+      if (res.status === 428 || data.code === "BIRTH_DETAILS_REQUIRED") {
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.id === chatId
+              ? {
+                  ...chat,
+                  messages: chat.messages.filter(
+                    (message) => message.id !== assistantMessageId
+                  ),
+                }
+              : chat
+          )
+        );
+        router.replace("/birth-details");
+        return;
+      }
+
       const finalAnswer = data.answer || t.silentError;
       const elapsed = Date.now() - requestStartedAt;
       const targetDelay = getRealisticReplyDelay(finalAnswer);
@@ -905,10 +998,18 @@ export default function Home() {
         </aside>
       </div>
 
+      {isPreparingBirthProfile && (
+        <div className="relative z-10 flex min-h-[100svh] items-center justify-center px-4 text-center">
+          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] px-5 py-4 text-[15px] text-white/65 backdrop-blur-2xl">
+            Preparing your Bhagya profile...
+          </div>
+        </div>
+      )}
+
       {/* ══════════════════════════════════════════
           LANDING / FIRST SCREEN
       ══════════════════════════════════════════ */}
-      {!hasStarted && (
+      {!hasStarted && !isPreparingBirthProfile && (
         <div className="bhagya-landing relative z-10 flex min-h-[100svh] flex-col overflow-hidden">
           {chats.length > 0 && (
             <button
@@ -1028,7 +1129,7 @@ export default function Home() {
       {/* ══════════════════════════════════════════
           CHAT SCREEN
       ══════════════════════════════════════════ */}
-      {hasStarted && (
+      {hasStarted && !isPreparingBirthProfile && (
         <div className="relative z-10 flex min-h-[100svh]">
           {/* ── Left icon rail ── */}
           <nav className="fixed left-0 top-0 z-30 hidden h-screen w-14 flex-col items-center border-r border-white/[0.07] bg-black/50 py-3 backdrop-blur-2xl sm:flex">

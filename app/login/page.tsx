@@ -33,6 +33,20 @@ function getNextUrl() {
   return next.startsWith("/") ? next : "/";
 }
 
+async function getPostLoginDestination(accessToken: string) {
+  const res = await fetch("/api/birth-details", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!res.ok) return "/birth-details";
+
+  const data = (await res.json()) as { complete?: boolean };
+
+  return data.complete ? "/" : "/birth-details";
+}
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -80,6 +94,30 @@ export default function LoginPage() {
       localStorage.setItem(LANGUAGE_STORAGE_KEY, selectedLanguage);
     }
   }, [hasLoadedLanguage, selectedLanguage]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function redirectSignedInUser() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!isMounted || !session?.access_token) return;
+
+      const destination = await getPostLoginDestination(session.access_token);
+
+      if (isMounted) {
+        router.replace(destination);
+      }
+    }
+
+    void redirectSignedInUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
 async function handleSubmit(event: FormEvent<HTMLFormElement>) {
   event.preventDefault();
@@ -140,11 +178,15 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         return;
       }
 
-      if (data.session) {
+      if (data.session?.access_token) {
+        const destination = await getPostLoginDestination(
+          data.session.access_token
+        );
+
         setMessage(t.accountCreated);
 
         setTimeout(() => {
-          router.push(getNextUrl());
+          router.push(destination);
         }, 500);
       } else {
         setMessage(
@@ -156,7 +198,7 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
       return;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password: password.trim(),
     });
@@ -166,10 +208,13 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
       return;
     }
 
-    setMessage(t.loginSuccess);
+    const destination = data.session?.access_token
+      ? await getPostLoginDestination(data.session.access_token)
+      : "/birth-details";
 
+    setMessage(t.loginSuccess);
     setTimeout(() => {
-      router.push(getNextUrl());
+      router.push(destination);
     }, 500);
   } catch {
     setMessage(t.authError);
@@ -188,7 +233,9 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
       options: {
         redirectTo:
           typeof window !== "undefined"
-            ? `${window.location.origin}${nextUrl}`
+            ? `${window.location.origin}/login?next=${encodeURIComponent(
+                nextUrl
+              )}`
             : undefined,
       },
     });

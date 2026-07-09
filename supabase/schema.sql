@@ -22,6 +22,33 @@ create table if not exists public.user_birth_details (
   updated_at timestamptz default now()
 );
 
+with ranked_birth_details as (
+  select
+    id,
+    row_number() over (
+      partition by user_id
+      order by updated_at desc nulls last, created_at desc nulls last, id desc
+    ) as row_number
+  from public.user_birth_details
+)
+delete from public.user_birth_details
+using ranked_birth_details
+where public.user_birth_details.id = ranked_birth_details.id
+  and ranked_birth_details.row_number > 1;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'user_birth_details_user_id_unique'
+  ) then
+    alter table public.user_birth_details
+    add constraint user_birth_details_user_id_unique unique (user_id);
+  end if;
+end
+$$;
+
 create table if not exists public.chats (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,

@@ -10,6 +10,14 @@ export type SavedBirthDetails = {
   timezoneOffset?: string | null;
 };
 
+export function isCompleteBirthDetails(details: SavedBirthDetails | null) {
+  return Boolean(
+    details?.dateOfBirth?.trim() &&
+      details?.birthTime?.trim() &&
+      details?.birthPlace?.trim()
+  );
+}
+
 export async function getSavedBirthDetails({
   request,
   userId,
@@ -67,37 +75,35 @@ export async function upsertBirthDetails({
   timezoneOffset?: string | null;
 }) {
   const supabase = createSupabaseUserClient(request);
-  const existing = await getSavedBirthDetails({ request, userId });
-  const values = {
-    date_of_birth: dateOfBirth,
-    birth_time: birthTime,
-    birth_place: birthPlace,
-    latitude,
-    longitude,
-    timezone_offset: timezoneOffset,
-    updated_at: new Date().toISOString(),
-  };
-
-  if (existing?.id) {
-    const { error } = await supabase
-      .from("user_birth_details")
-      .update(values)
-      .eq("id", existing.id)
-      .eq("user_id", userId);
-
-    if (error) {
-      console.error("Update birth details error:", error.message);
-    }
-
-    return;
-  }
-
-  const { error } = await supabase.from("user_birth_details").insert({
-    user_id: userId,
-    ...values,
-  });
+  const { error } = await supabase.from("user_birth_details").upsert(
+    {
+      user_id: userId,
+      date_of_birth: dateOfBirth,
+      birth_time: birthTime,
+      birth_place: birthPlace,
+      latitude,
+      longitude,
+      timezone_offset: timezoneOffset,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" }
+  );
 
   if (error) {
-    console.error("Insert birth details error:", error.message);
+    console.error("Upsert birth details error:", error.message);
+    throw new Error("Could not save birth details.");
   }
+}
+
+export function toBirthDetailsResponse(details: SavedBirthDetails | null) {
+  if (!details) return null;
+
+  return {
+    dateOfBirth: details.dateOfBirth || "",
+    birthTime: details.birthTime || "",
+    birthPlace: details.birthPlace || "",
+    latitude: details.latitude ?? undefined,
+    longitude: details.longitude ?? undefined,
+    timezoneOffset: details.timezoneOffset ?? undefined,
+  };
 }

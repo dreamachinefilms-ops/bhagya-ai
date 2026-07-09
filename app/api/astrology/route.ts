@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/backend/auth";
 import {
   getSavedBirthDetails,
+  isCompleteBirthDetails,
   upsertBirthDetails,
 } from "@/lib/backend/birthDetailsMemory";
 import { saveAiExchange } from "@/lib/backend/chats";
@@ -19,38 +20,17 @@ import {
   buildProkeralaDateTime,
   callProkeralaKundli,
 } from "@/lib/prokerala/client";
-import { extractBirthDetailsFromConversation } from "@/lib/prokerala/birthDetails";
 import {
   resolveBirthPlace,
   type ResolvedLocation,
 } from "@/lib/prokerala/locationResolver";
 import {
-  buildAstrologyMissingResponse,
-  buildBirthPlaceUnresolvedResponse,
   buildProkeralaApiFailedResponse,
   buildProkeralaCredentialsMissingResponse,
 } from "@/lib/guidanceResponses";
 
 const routeName = "api/astrology";
 type BirthDetailKey = "dateOfBirth" | "birthTime" | "birthPlace";
-
-function getMissingBirthDetails({
-  dateOfBirth,
-  birthTime,
-  birthPlace,
-}: {
-  dateOfBirth?: string | null;
-  birthTime?: string | null;
-  birthPlace?: string | null;
-}) {
-  const missing: BirthDetailKey[] = [];
-
-  if (!dateOfBirth) missing.push("dateOfBirth");
-  if (!birthTime) missing.push("birthTime");
-  if (!birthPlace) missing.push("birthPlace");
-
-  return missing;
-}
 
 function getSavedLocation(savedBirthDetails: {
   birthPlace?: string | null;
@@ -73,6 +53,16 @@ function getSavedLocation(savedBirthDetails: {
     longitude: Number(savedBirthDetails.longitude),
     timezoneOffset: savedBirthDetails.timezoneOffset,
   };
+}
+
+function birthDetailsRequiredResponse() {
+  return NextResponse.json(
+    {
+      code: "BIRTH_DETAILS_REQUIRED",
+      answer: "Please complete your birth profile before continuing.",
+    },
+    { status: 428 }
+  );
 }
 
 export async function POST(request: Request) {
@@ -113,92 +103,44 @@ export async function POST(request: Request) {
     }
 
     const conversationText = buildConversationText(messages, question);
-    const extractedBirthDetails =
-      extractBirthDetailsFromConversation(conversationText);
     const savedBirthDetails = await getSavedBirthDetails({
       request,
       userId: user.id,
     });
-    const birthDetails = {
-      dateOfBirth:
-        extractedBirthDetails.dateOfBirth ||
-        savedBirthDetails?.dateOfBirth ||
-        "",
-      birthTime:
-        extractedBirthDetails.birthTime || savedBirthDetails?.birthTime || "",
-      birthPlace:
-        extractedBirthDetails.birthPlace ||
-        savedBirthDetails?.birthPlace ||
-        "",
-      isComplete: false,
-      missing: [] as BirthDetailKey[],
-    };
-    const missing = getMissingBirthDetails(birthDetails);
-    const isComplete = missing.length === 0;
 
-    birthDetails.isComplete = isComplete;
-    birthDetails.missing = missing;
-
-    console.log("Birth details status:", {
-      hasSavedDetails: Boolean(savedBirthDetails),
-      extractedComplete: extractedBirthDetails.isComplete,
-      mergedComplete: isComplete,
-      missing,
-    });
-
-    if (!isComplete) {
-      const answer = buildAstrologyMissingResponse(
-        missing,
-        languageCode
-      );
-      const saved = await saveAiExchange({
-        request,
-        routeName,
-        userId: user.id,
-        chatId,
-        service,
-        languageCode,
-        question,
-        answer,
-      });
-
-      return NextResponse.json({ answer, ...saved });
+    if (!isCompleteBirthDetails(savedBirthDetails)) {
+      return birthDetailsRequiredResponse();
     }
 
-    const extractedHasPlace = Boolean(extractedBirthDetails.birthPlace);
+    const birthDetails = {
+      dateOfBirth: savedBirthDetails?.dateOfBirth || "",
+      birthTime: savedBirthDetails?.birthTime || "",
+      birthPlace: savedBirthDetails?.birthPlace || "",
+      isComplete: true,
+      missing: [] as BirthDetailKey[],
+    };
     const savedLocation = savedBirthDetails
       ? getSavedLocation(savedBirthDetails)
       : null;
     const location =
-      resolveBirthPlace(birthDetails.birthPlace || "") ||
-      (!extractedHasPlace ? savedLocation : null);
+      savedLocation || resolveBirthPlace(savedBirthDetails?.birthPlace || "");
 
     if (!location) {
-      const answer = buildBirthPlaceUnresolvedResponse(languageCode);
-      const saved = await saveAiExchange({
-        request,
-        routeName,
-        userId: user.id,
-        chatId,
-        service,
-        languageCode,
-        question,
-        answer,
-      });
-
-      return NextResponse.json({ answer, ...saved });
+      return birthDetailsRequiredResponse();
     }
 
-    await upsertBirthDetails({
-      request,
-      userId: user.id,
-      dateOfBirth: birthDetails.dateOfBirth,
-      birthTime: birthDetails.birthTime,
-      birthPlace: location.name || birthDetails.birthPlace,
-      latitude: location.latitude,
-      longitude: location.longitude,
-      timezoneOffset: location.timezoneOffset,
-    });
+    if (!savedLocation) {
+      await upsertBirthDetails({
+        request,
+        userId: user.id,
+        dateOfBirth: birthDetails.dateOfBirth,
+        birthTime: birthDetails.birthTime,
+        birthPlace: location.name || birthDetails.birthPlace,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        timezoneOffset: location.timezoneOffset,
+      });
+    }
 
     const datetime = buildProkeralaDateTime({
       dateOfBirth: birthDetails.dateOfBirth,
@@ -234,8 +176,7 @@ export async function POST(request: Request) {
         birthDetails,
         location,
         prokeralaData: kundliResult.data,
-        usedSavedBirthDetails:
-          Boolean(savedBirthDetails) && !extractedBirthDetails.isComplete,
+        usedSavedBirthDetails: true,
       }),
       input: conversationText,
     });

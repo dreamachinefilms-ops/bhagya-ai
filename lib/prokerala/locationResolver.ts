@@ -21,6 +21,7 @@ const indianCities: ResolvedLocation[] = [
   { name: "Noida", latitude: 28.5355, longitude: 77.391, timezoneOffset: "+05:30" },
   { name: "Gurugram", latitude: 28.4595, longitude: 77.0266, timezoneOffset: "+05:30" },
   { name: "Chandigarh", latitude: 30.7333, longitude: 76.7794, timezoneOffset: "+05:30" },
+  { name: "Nainital", latitude: 29.3919, longitude: 79.4542, timezoneOffset: "+05:30" },
   { name: "Bhopal", latitude: 23.2599, longitude: 77.4126, timezoneOffset: "+05:30" },
   { name: "Indore", latitude: 22.7196, longitude: 75.8577, timezoneOffset: "+05:30" },
   { name: "Patna", latitude: 25.5941, longitude: 85.1376, timezoneOffset: "+05:30" },

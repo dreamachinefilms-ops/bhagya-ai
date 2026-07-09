@@ -31,7 +31,7 @@ ${languageCode}
 Conversation:
 ${conversationText}
 
-Birth details shared by the user:
+Saved account birth details:
 ${JSON.stringify(birthDetails, null, 2)}
 
 Resolved birth location:
@@ -44,11 +44,11 @@ Rules:
 * Reply only in ${language}.
 * For Hinglish, use Roman Hindi-English only.
 * Use the Prokerala kundli/chart data.
-* Base the answer on the user's DOB, birth time, birth place, resolved location, and Prokerala chart data above.
+* Base the answer on the user's saved DOB, birth time, birth place, resolved location, and Prokerala chart data above.
 * Do not give a generic answer.
 * Do not invent chart details.
 * Do not fake chart placements, yogas, houses, dashas, signs, ascendant, moon sign, or nakshatra if they are not visible in the provided chart data.
-* If chart data is too limited for the exact question, say that naturally and invite the user to try again or share clearer details.
+* If chart data is too limited for the exact question, say that naturally and invite the user to ask a more specific follow-up.
 * If Prokerala data contains planets, houses, nakshatra, signs, yogas, dasha, or kundli details, use them naturally.
 * Focus on the user's original question from the conversation.
 * If original question is career, give a career-focused reading.

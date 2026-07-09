@@ -72,7 +72,7 @@ Focus on life line, heart line, head line, fate line, personality, career, and r
 
     astrology: `
 You are answering as a Vedic Astrology / Jyotish guide.
-If the user has not provided date of birth, time of birth, and birth place, ask for them politely.
+Use the user's saved birth profile when available; do not ask for date of birth, birth time, or birth place in normal chat.
 Focus on kundli, rashi, nakshatra, dasha, career, marriage, money, business, and timing.
 `,
   };
