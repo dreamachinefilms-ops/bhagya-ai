@@ -669,14 +669,11 @@ export default function Home() {
   return (
     <main className="relative min-h-[100svh] overflow-hidden bg-[#020817] text-white">
       {/* ── Mandala background ── */}
-      <div className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center overflow-hidden">
-        <div
-          className="relative aspect-square -translate-y-[4svh] sm:translate-y-0"
-          style={{ width: "min(118vw, 900px)" }}
-        >
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <div className="bhagya-mandala-stage absolute left-1/2">
           {/* Outer orbit */}
           <div
-            className="absolute inset-0 m-auto aspect-square rounded-full border border-[#38bdf8]/10"
+            className="absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full border border-sky-400/10"
             style={{
               width: "min(118vw, 900px)",
               animation: "spinCCW 280s linear infinite",
@@ -685,16 +682,16 @@ export default function Home() {
 
           {/* Middle orbit */}
           <div
-            className="absolute inset-0 m-auto aspect-square rounded-full border border-[#38bdf8]/10"
+            className="absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full border border-sky-400/10"
             style={{
               width: "min(102vw, 660px)",
               animation: "spinCW 200s linear infinite",
             }}
           />
 
-          {/* Full visible mandala */}
+          {/* Main mandala image */}
           <div
-            className="absolute inset-0 m-auto aspect-square rounded-full bg-contain bg-center bg-no-repeat opacity-[0.20] mix-blend-screen"
+            className="absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full bg-contain bg-center bg-no-repeat opacity-[0.20] mix-blend-screen"
             style={{
               width: "min(92vw, 720px)",
               backgroundImage: "url('/mandala.png')",
@@ -705,7 +702,7 @@ export default function Home() {
 
           {/* Central glow */}
           <div
-            className="absolute inset-0 m-auto aspect-square rounded-full"
+            className="absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full"
             style={{
               width: "min(68vw, 520px)",
               background:
