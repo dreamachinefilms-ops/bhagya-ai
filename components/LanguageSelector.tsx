@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { languages, type LanguageCode } from "@/lib/languages";
+import {
+  DEFAULT_LANGUAGE_CODE,
+  languages,
+  type LanguageCode,
+} from "@/lib/languages";
 
 export default function LanguageSelector({
   selectedLanguage,
@@ -13,7 +17,9 @@ export default function LanguageSelector({
   const [isOpen, setIsOpen] = useState(false);
 
   const currentLanguage =
-    languages.find((lang) => lang.code === selectedLanguage) || languages[0];
+    languages.find((lang) => lang.code === selectedLanguage) ||
+    languages.find((lang) => lang.code === DEFAULT_LANGUAGE_CODE) ||
+    languages[0];
 
   return (
     <div className="relative">

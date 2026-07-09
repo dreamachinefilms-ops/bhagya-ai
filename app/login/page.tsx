@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import LanguageSelector from "@/components/LanguageSelector";
 import {
+  DEFAULT_LANGUAGE_CODE,
+  LANGUAGE_DEFAULT_MIGRATION_KEY,
   LANGUAGE_STORAGE_KEY,
   languages,
   UI_TEXT,
@@ -13,6 +15,13 @@ import {
 import { supabase } from "@/lib/supabaseClient";
 
 type AuthMode = "login" | "signup";
+
+function isLanguageCode(value: unknown): value is LanguageCode {
+  return (
+    typeof value === "string" &&
+    languages.some((language) => language.code === value)
+  );
+}
 
 function getNextUrl() {
   if (typeof window === "undefined") return "/";
@@ -28,7 +37,7 @@ export default function LoginPage() {
   const router = useRouter();
 
   const [selectedLanguage, setSelectedLanguage] =
-    useState<LanguageCode>("hinglish");
+    useState<LanguageCode>(DEFAULT_LANGUAGE_CODE);
   const [hasLoadedLanguage, setHasLoadedLanguage] = useState(false);
   const [mode, setMode] = useState<AuthMode>("login");
   const [name, setName] = useState("");
@@ -42,16 +51,25 @@ export default function LoginPage() {
   const t = UI_TEXT[selectedLanguage];
 
   useEffect(() => {
-    const savedLanguage = localStorage.getItem(
-      LANGUAGE_STORAGE_KEY
-    ) as LanguageCode | null;
+    const migrated = localStorage.getItem(LANGUAGE_DEFAULT_MIGRATION_KEY);
+    let savedLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
 
-    if (
-      savedLanguage &&
-      languages.some((lang) => lang.code === savedLanguage)
-    ) {
+    if (!migrated) {
+      if (!savedLanguage || savedLanguage === "hinglish") {
+        localStorage.setItem(LANGUAGE_STORAGE_KEY, DEFAULT_LANGUAGE_CODE);
+        savedLanguage = DEFAULT_LANGUAGE_CODE;
+      }
+
+      localStorage.setItem(LANGUAGE_DEFAULT_MIGRATION_KEY, "true");
+    }
+
+    if (isLanguageCode(savedLanguage)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the persisted client preference after mount
       setSelectedLanguage(savedLanguage);
+    } else {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, DEFAULT_LANGUAGE_CODE);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- default to English when no persisted preference exists
+      setSelectedLanguage(DEFAULT_LANGUAGE_CODE);
     }
 
     setHasLoadedLanguage(true);

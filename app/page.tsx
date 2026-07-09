@@ -12,6 +12,8 @@ import {
 } from "react";
 import LanguageSelector from "@/components/LanguageSelector";
 import {
+  DEFAULT_LANGUAGE_CODE,
+  LANGUAGE_DEFAULT_MIGRATION_KEY,
   LANGUAGE_STORAGE_KEY,
   languages,
   UI_TEXT,
@@ -130,7 +132,7 @@ export default function Home() {
   const [selectedService, setSelectedService] =
     useState<ServiceType>("astrology");
   const [selectedLanguage, setSelectedLanguage] =
-    useState<LanguageCode>("hinglish");
+    useState<LanguageCode>(DEFAULT_LANGUAGE_CODE);
   const [hasLoadedLanguage, setHasLoadedLanguage] = useState(false);
   const [question, setQuestion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -152,7 +154,7 @@ export default function Home() {
   const t = UI_TEXT[selectedLanguage];
   const selectedLanguageLabel =
     languages.find((lang) => lang.code === selectedLanguage)?.label ||
-    "Hinglish";
+    "English";
 
   const getAuthHeaders = useCallback(async () => {
     const {
@@ -235,16 +237,25 @@ export default function Home() {
   }, [getAuthHeaders, mapDbChat]);
 
   useEffect(() => {
-    const savedLanguage = localStorage.getItem(
-      LANGUAGE_STORAGE_KEY
-    ) as LanguageCode | null;
+    const migrated = localStorage.getItem(LANGUAGE_DEFAULT_MIGRATION_KEY);
+    let savedLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
 
-    if (
-      savedLanguage &&
-      languages.some((lang) => lang.code === savedLanguage)
-    ) {
+    if (!migrated) {
+      if (!savedLanguage || savedLanguage === "hinglish") {
+        localStorage.setItem(LANGUAGE_STORAGE_KEY, DEFAULT_LANGUAGE_CODE);
+        savedLanguage = DEFAULT_LANGUAGE_CODE;
+      }
+
+      localStorage.setItem(LANGUAGE_DEFAULT_MIGRATION_KEY, "true");
+    }
+
+    if (isLanguageCode(savedLanguage)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the persisted client preference after mount
       setSelectedLanguage(savedLanguage);
+    } else {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, DEFAULT_LANGUAGE_CODE);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- default to English when no persisted preference exists
+      setSelectedLanguage(DEFAULT_LANGUAGE_CODE);
     }
 
     setHasLoadedLanguage(true);

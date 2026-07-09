@@ -113,8 +113,8 @@ export async function POST(
     const validation = validateAiRequestBody({
       ...requestBody,
       service,
-      language: requestBody.language || "Hinglish",
-      languageCode: requestBody.languageCode || "hinglish",
+      language: requestBody.language || "English",
+      languageCode: requestBody.languageCode || "english",
     });
 
     if (!validation.ok) {

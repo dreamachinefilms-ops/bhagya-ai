@@ -10,6 +10,9 @@ export type LanguageCode =
   | "punjabi";
 
 export const LANGUAGE_STORAGE_KEY = "bhagya_selected_language_v1";
+export const LANGUAGE_DEFAULT_MIGRATION_KEY =
+  "bhagya_default_language_english_v1";
+export const DEFAULT_LANGUAGE_CODE: LanguageCode = "english";
 
 export const languages = [
   { code: "hinglish", label: "Hinglish", short: "HIN" },
