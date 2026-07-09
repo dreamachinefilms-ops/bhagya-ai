@@ -1,6 +1,9 @@
 export type BirthDetails = {
   dateOfBirth?: string;
-  birthTime?: string;
+  birthTime?: string | null;
+  birthTimeKnown?: boolean;
+  birthTimeAccuracy?: "known" | "unknown";
+  calculationFallbackTime?: string;
   birthPlace?: string;
   isComplete: boolean;
   missing: Array<"dateOfBirth" | "birthTime" | "birthPlace">;

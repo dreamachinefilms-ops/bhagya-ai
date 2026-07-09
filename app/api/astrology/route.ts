@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/backend/auth";
 import {
   getSavedBirthDetails,
+  getSavedUserProfile,
   isCompleteBirthDetails,
   upsertBirthDetails,
 } from "@/lib/backend/birthDetailsMemory";
@@ -49,6 +50,7 @@ function getSavedLocation(savedBirthDetails: {
 
   return {
     name: savedBirthDetails.birthPlace,
+    displayName: savedBirthDetails.birthPlace,
     latitude: Number(savedBirthDetails.latitude),
     longitude: Number(savedBirthDetails.longitude),
     timezoneOffset: savedBirthDetails.timezoneOffset,
@@ -103,18 +105,30 @@ export async function POST(request: Request) {
     }
 
     const conversationText = buildConversationText(messages, question);
-    const savedBirthDetails = await getSavedBirthDetails({
-      request,
-      userId: user.id,
-    });
+    const [savedProfile, savedBirthDetails] = await Promise.all([
+      getSavedUserProfile({ request, userId: user.id }),
+      getSavedBirthDetails({
+        request,
+        userId: user.id,
+      }),
+    ]);
 
     if (!isCompleteBirthDetails(savedBirthDetails)) {
       return birthDetailsRequiredResponse();
     }
 
+    const birthTimeKnown = savedBirthDetails?.birthTimeKnown !== false;
+    const calculationBirthTime = birthTimeKnown
+      ? savedBirthDetails?.birthTime || ""
+      : "12:00";
     const birthDetails = {
       dateOfBirth: savedBirthDetails?.dateOfBirth || "",
-      birthTime: savedBirthDetails?.birthTime || "",
+      birthTime: birthTimeKnown ? savedBirthDetails?.birthTime || "" : null,
+      birthTimeKnown,
+      birthTimeAccuracy: birthTimeKnown
+        ? ("known" as const)
+        : ("unknown" as const),
+      calculationFallbackTime: birthTimeKnown ? undefined : "12:00",
       birthPlace: savedBirthDetails?.birthPlace || "",
       isComplete: true,
       missing: [] as BirthDetailKey[],
@@ -134,8 +148,9 @@ export async function POST(request: Request) {
         request,
         userId: user.id,
         dateOfBirth: birthDetails.dateOfBirth,
-        birthTime: birthDetails.birthTime,
-        birthPlace: location.name || birthDetails.birthPlace,
+        birthTime: birthTimeKnown ? calculationBirthTime : null,
+        birthTimeKnown,
+        birthPlace: location.displayName || location.name || birthDetails.birthPlace,
         latitude: location.latitude,
         longitude: location.longitude,
         timezoneOffset: location.timezoneOffset,
@@ -144,7 +159,7 @@ export async function POST(request: Request) {
 
     const datetime = buildProkeralaDateTime({
       dateOfBirth: birthDetails.dateOfBirth,
-      birthTime: birthDetails.birthTime,
+      birthTime: calculationBirthTime,
       timezoneOffset: location.timezoneOffset,
     });
     const kundliResult = await callProkeralaKundli({ datetime, location });
@@ -176,6 +191,7 @@ export async function POST(request: Request) {
         birthDetails,
         location,
         prokeralaData: kundliResult.data,
+        userFirstName: savedProfile?.firstName,
         usedSavedBirthDetails: true,
       }),
       input: conversationText,

@@ -3,6 +3,7 @@ create extension if not exists "pgcrypto";
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
+  first_name text,
   email text,
   preferred_language text default 'english',
   created_at timestamptz default now(),
@@ -14,6 +15,7 @@ create table if not exists public.user_birth_details (
   user_id uuid not null references auth.users(id) on delete cascade,
   date_of_birth text,
   birth_time text,
+  birth_time_known boolean not null default true,
   birth_place text,
   latitude numeric,
   longitude numeric,
