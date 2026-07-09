@@ -667,44 +667,52 @@ export default function Home() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#020817] text-white">
+    <main className="relative min-h-[100svh] overflow-hidden bg-[#020817] text-white">
       {/* ── Mandala background ── */}
-      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
+      <div className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center overflow-hidden">
         <div
-          className="absolute h-[900px] w-[900px] rounded-full border border-[#38bdf8]/12"
-          style={{ animation: "spinCCW 280s linear infinite" }}
-        />
+          className="relative aspect-square -translate-y-[4svh] sm:translate-y-0"
+          style={{ width: "min(118vw, 900px)" }}
+        >
+          {/* Outer orbit */}
+          <div
+            className="absolute inset-0 m-auto aspect-square rounded-full border border-[#38bdf8]/10"
+            style={{
+              width: "min(118vw, 900px)",
+              animation: "spinCCW 280s linear infinite",
+            }}
+          />
 
-        <div
-          className="absolute h-[660px] w-[660px] rounded-full border border-[#38bdf8]/10"
-          style={{ animation: "spinCW 200s linear infinite" }}
-        />
+          {/* Middle orbit */}
+          <div
+            className="absolute inset-0 m-auto aspect-square rounded-full border border-[#38bdf8]/10"
+            style={{
+              width: "min(102vw, 660px)",
+              animation: "spinCW 200s linear infinite",
+            }}
+          />
 
-        <div
-          className="absolute h-[720px] w-[720px] rounded-full bg-contain bg-center bg-no-repeat opacity-[0.03]"
-          style={{
-            backgroundImage: "url('/mandala.png')",
-            animation: "spinCW 180s linear infinite",
-            filter: "hue-rotate(185deg) saturate(1.8) brightness(1.15)",
-          }}
-        />
+          {/* Full visible mandala */}
+          <div
+            className="absolute inset-0 m-auto aspect-square rounded-full bg-contain bg-center bg-no-repeat opacity-[0.20] mix-blend-screen"
+            style={{
+              width: "min(92vw, 720px)",
+              backgroundImage: "url('/mandala.png')",
+              animation: "spinCW 180s linear infinite",
+              filter: "hue-rotate(185deg) saturate(1.6) brightness(1.15)",
+            }}
+          />
 
-        <div
-          className="absolute h-[720px] w-[720px] rounded-full bg-contain bg-center bg-no-repeat opacity-[0.18] mix-blend-screen"
-          style={{
-            backgroundImage: "url('/mandala.png')",
-            animation: "spinCW 180s linear infinite",
-            filter: "sepia(0.45) saturate(1.65) brightness(1.2)",
-          }}
-        />
-
-        <div
-          className="absolute h-[520px] w-[520px] rounded-full"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(56,189,248,0.08) 0%, transparent 70%)",
-          }}
-        />
+          {/* Central glow */}
+          <div
+            className="absolute inset-0 m-auto aspect-square rounded-full"
+            style={{
+              width: "min(68vw, 520px)",
+              background:
+                "radial-gradient(circle, rgba(56,189,248,0.08) 0%, transparent 70%)",
+            }}
+          />
+        </div>
       </div>
 
       {/* ── Subtle star field only, no floating constellations ── */}
@@ -737,7 +745,7 @@ export default function Home() {
 
         {/* Drawer panel */}
         <aside
-          className={`absolute left-0 top-0 flex h-full w-[300px] flex-col border-r border-white/[0.08] backdrop-blur-3xl transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+          className={`absolute left-0 top-0 flex h-full w-[88vw] max-w-[340px] flex-col border-r border-white/[0.08] backdrop-blur-3xl transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
             isSidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
           style={{
@@ -893,7 +901,7 @@ export default function Home() {
           LANDING / FIRST SCREEN
       ══════════════════════════════════════════ */}
       {!hasStarted && (
-        <div className="bhagya-landing relative z-10 flex min-h-screen flex-col">
+        <div className="bhagya-landing relative z-10 flex min-h-[100svh] flex-col overflow-hidden">
           {chats.length > 0 && (
             <button
               onClick={() => setIsSidebarOpen(true)}
@@ -918,10 +926,10 @@ export default function Home() {
           )}
 
           {/* Header */}
-          <header className="flex w-full items-center justify-between px-5 py-5 md:px-8">
+          <header className="flex w-full items-center justify-between px-4 pb-3 pt-[calc(env(safe-area-inset-top)+16px)] sm:px-8 sm:py-5">
             <Link href="/" className="group flex items-center gap-2.5">
               <div
-                className="flex h-9 w-9 items-center justify-center rounded-2xl shadow-lg shadow-sky-500/20 transition group-hover:scale-105"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl shadow-lg shadow-sky-500/20 transition group-hover:scale-105 sm:h-9 sm:w-9"
                 style={{
                   background: "linear-gradient(135deg, #38bdf8, #1d4ed8)",
                 }}
@@ -930,16 +938,16 @@ export default function Home() {
               </div>
 
               <div>
-                <p className="text-[15px] font-semibold leading-none tracking-tight">
+                <p className="text-[17px] font-semibold leading-none tracking-tight sm:text-[15px]">
                   {t.appName}
                 </p>
-                <p className="mt-0.5 text-[11px] leading-none text-sky-300/70">
+                <p className="mt-0.5 text-[12px] leading-none text-sky-300/70 sm:text-[11px]">
                   {t.tagline}
                 </p>
               </div>
             </Link>
 
-            <div className="flex items-center gap-2">
+            <div className="bhagya-landing-actions flex items-center gap-2">
               <LanguageSelector
                 selectedLanguage={selectedLanguage}
                 setSelectedLanguage={setSelectedLanguage}
@@ -948,14 +956,14 @@ export default function Home() {
               {isLoggedIn ? (
                 <button
                   onClick={logoutUser}
-                  className="bhagya-pill-btn text-[13px] font-medium text-white/70 transition hover:text-sky-300"
+                  className="bhagya-pill-btn min-h-[44px] text-[14px] font-medium text-white/70 transition hover:text-sky-300 sm:min-h-0 sm:text-[13px]"
                 >
                   {t.logout}
                 </button>
               ) : (
                 <Link
                   href="/login"
-                  className="bhagya-pill-btn text-[13px] font-medium text-white/70 transition hover:text-sky-300"
+                  className="bhagya-pill-btn flex min-h-[44px] items-center text-[14px] font-medium text-white/70 transition hover:text-sky-300 sm:min-h-0 sm:text-[13px]"
                 >
                   {t.signIn}
                 </Link>
@@ -964,24 +972,24 @@ export default function Home() {
           </header>
 
           {/* Hero */}
-          <section className="flex flex-1 flex-col items-center justify-center px-5 pb-20">
-            <div className="w-full max-w-xl">
+          <section className="flex flex-1 flex-col items-center justify-center px-4 pb-[calc(env(safe-area-inset-bottom)+28px)] pt-4 sm:px-5 sm:pb-20">
+            <div className="w-full max-w-[560px]">
               {/* Badge */}
-              <div className="mb-8 flex justify-center">
-                <span className="inline-flex items-center gap-2 rounded-full border border-sky-500/25 bg-sky-500/10 px-4 py-1.5 text-xs font-medium text-sky-300/80 backdrop-blur-sm">
+              <div className="mb-[22px] flex justify-center">
+                <span className="inline-flex max-w-[calc(100vw-32px)] items-center justify-center gap-2 rounded-full border border-sky-500/25 bg-sky-500/10 px-4 py-2 text-center text-[13px] font-medium text-sky-300/80 backdrop-blur-sm">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-300" />
                   {t.badge}
                 </span>
               </div>
 
               {/* Headline */}
-              <div className="mb-10 text-center">
-                <h1 className="mb-3 text-[28px] font-semibold leading-snug tracking-tight text-white/95 md:text-[34px]">
+              <div className="mb-7 text-center">
+                <h1 className="mb-4 text-center text-[36px] font-semibold leading-[1.12] tracking-[-0.03em] text-white/95 sm:text-[38px] md:text-[42px]">
                   {t.headlineLine1}
                   <br />
                   <span className="text-sky-300">{t.headlineLine2}</span>
                 </h1>
-                <p className="text-[13px] leading-relaxed text-white/40">
+                <p className="mx-auto max-w-[330px] text-center text-[15px] leading-6 text-white/50 sm:text-base">
                   {t.subtitle}
                 </p>
               </div>
@@ -1013,9 +1021,9 @@ export default function Home() {
           CHAT SCREEN
       ══════════════════════════════════════════ */}
       {hasStarted && (
-        <div className="relative z-10 flex min-h-screen">
+        <div className="relative z-10 flex min-h-[100svh]">
           {/* ── Left icon rail ── */}
-          <nav className="fixed left-0 top-0 z-30 flex h-screen w-14 flex-col items-center border-r border-white/[0.07] bg-black/50 py-3 backdrop-blur-2xl">
+          <nav className="fixed left-0 top-0 z-30 hidden h-screen w-14 flex-col items-center border-r border-white/[0.07] bg-black/50 py-3 backdrop-blur-2xl sm:flex">
             {/* Logo mark */}
             <Link
               href="/"
@@ -1100,10 +1108,51 @@ export default function Home() {
           </nav>
 
           {/* ── Main chat area ── */}
-          <section className="flex min-h-screen w-full flex-col pl-14">
+          <section className="flex min-h-[100svh] w-full flex-col pl-0 sm:pl-14">
             {/* Chat header */}
-            <header className="fixed left-14 right-0 top-0 z-20 flex h-14 items-center justify-between border-b border-white/[0.07] bg-[#020817]/75 px-4 backdrop-blur-2xl">
-              <div className="flex items-center gap-3">
+            <header className="fixed left-0 right-0 top-0 z-20 flex h-[calc(56px+env(safe-area-inset-top))] items-end justify-between border-b border-white/[0.07] bg-[#020817]/75 px-3 pb-2 pt-[env(safe-area-inset-top)] backdrop-blur-2xl sm:left-14 sm:h-14 sm:items-center sm:px-4 sm:py-0">
+              <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                <button
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04] text-white/60 transition hover:border-sky-400/35 hover:bg-sky-500/10 hover:text-sky-300 sm:hidden"
+                  aria-label={t.recentReadings}
+                  title={t.recentReadings}
+                >
+                  <svg
+                    width="17"
+                    height="17"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  >
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="12" x2="16" y2="12" />
+                    <line x1="3" y1="18" x2="19" y2="18" />
+                  </svg>
+                </button>
+
+                <button
+                  onClick={startNewChat}
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04] text-white/60 transition hover:border-sky-400/35 hover:bg-sky-500/10 hover:text-sky-300 sm:hidden"
+                  aria-label={t.newReading}
+                  title={t.newReading}
+                >
+                  <svg
+                    width="17"
+                    height="17"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+
                 <div
                   className={`flex h-7 w-7 items-center justify-center rounded-lg text-sm ${
                     selectedService === "astrology"
@@ -1118,8 +1167,8 @@ export default function Home() {
                   {getServiceGlyph(selectedService)}
                 </div>
 
-                <div>
-                  <p className="text-[13px] font-semibold leading-none text-white/90">
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-semibold leading-none text-white/90">
                     {getServiceLabel(selectedService)} {t.reading}
                   </p>
                   <p className="mt-0.5 text-[10px] leading-none text-white/35">
@@ -1128,7 +1177,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="bhagya-chat-actions flex flex-shrink-0 items-center gap-1.5 sm:gap-2">
                 <LanguageSelector
                   selectedLanguage={selectedLanguage}
                   setSelectedLanguage={setSelectedLanguage}
@@ -1153,9 +1202,9 @@ export default function Home() {
             </header>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto pb-44 pt-14">
+            <div className="flex-1 overflow-y-auto pb-[190px] pt-[calc(56px+env(safe-area-inset-top))] sm:pb-44 sm:pt-14">
               <div
-                className="mx-auto max-w-2xl space-y-5 px-4 py-6"
+                className="mx-auto max-w-2xl space-y-4 px-[14px] py-4 sm:space-y-5 sm:px-4 sm:py-6"
                 style={{
                   animation: "slideUp 0.4s cubic-bezier(0.16,1,0.3,1)",
                 }}
@@ -1194,18 +1243,18 @@ export default function Home() {
                     <div
                       className={`${
                         message.role === "user"
-                          ? "max-w-[78%] md:max-w-[65%]"
-                          : "max-w-[85%] md:max-w-[72%]"
+                          ? "max-w-[88%] sm:max-w-[65%]"
+                          : "max-w-[92%] sm:max-w-[72%]"
                       }`}
                     >
                       {message.role === "assistant" && (
-                        <p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-sky-300/60">
+                        <p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-sky-300/60">
                           {getServiceLabel(message.service)}
                         </p>
                       )}
 
                       <div
-                        className={`rounded-2xl px-4 py-3 text-[14px] leading-relaxed md:text-[15px] ${
+                        className={`rounded-2xl px-4 py-3 text-[15px] leading-6 sm:text-[15px] ${
                           message.role === "user"
                             ? "text-white"
                             : "border border-white/[0.08] text-white/82"
@@ -1247,8 +1296,11 @@ export default function Home() {
 
             {/* ── Bottom composer ── */}
             <div
-              className="fixed bottom-0 left-14 right-0 z-20 border-t border-white/[0.07] backdrop-blur-2xl"
-              style={{ background: "rgba(2,8,23,0.9)" }}
+              className="fixed bottom-0 left-0 right-0 z-20 border-t border-white/[0.07] backdrop-blur-2xl sm:left-14"
+              style={{
+                background: "rgba(2,8,23,0.94)",
+                paddingBottom: "env(safe-area-inset-bottom)",
+              }}
             >
               {/* Service mode pills */}
               <div className="mx-auto max-w-2xl px-3 pt-3">
@@ -1261,7 +1313,7 @@ export default function Home() {
               </div>
 
               {/* Input bar */}
-              <div className="mx-auto max-w-2xl px-3 pb-4 pt-2.5">
+              <div className="mx-auto max-w-2xl px-3 pb-3 pt-2.5 sm:pb-4">
                 <ChatInput
                   question={question}
                   setQuestion={setQuestion}
@@ -1301,10 +1353,13 @@ export default function Home() {
         }
 
         .bhagya-pill-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           border-radius: 100px;
           border: 1px solid rgba(255,255,255,0.09);
           background: rgba(255,255,255,0.04);
-          padding: 6px 14px;
+          padding: 8px 14px;
           backdrop-filter: blur(8px);
           transition: border-color 0.2s, color 0.2s, background 0.2s;
         }
@@ -1333,6 +1388,21 @@ export default function Home() {
 
         .bhagya-rail-btn:active {
           transform: scale(0.96);
+        }
+
+        @media (max-width: 639px) {
+          .bhagya-landing-actions button,
+          .bhagya-landing-actions .bhagya-pill-btn {
+            min-height: 44px;
+            font-size: 14px;
+            padding-left: 14px;
+            padding-right: 14px;
+          }
+        }
+
+        .bhagya-chat-actions button,
+        .bhagya-chat-actions .bhagya-pill-btn {
+          min-height: 40px;
         }
 
         .scrollbar-hide::-webkit-scrollbar {
@@ -1375,7 +1445,7 @@ function ChatInput({
 }) {
   return (
     <div
-      className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 transition-all duration-200 focus-within:ring-1 focus-within:ring-sky-400/40"
+      className="flex min-h-[64px] w-full items-center gap-2 rounded-[20px] px-3 py-2.5 transition-all duration-200 focus-within:ring-1 focus-within:ring-sky-400/40 sm:min-h-[60px] sm:rounded-2xl"
       style={{
         background: "rgba(255,255,255,0.05)",
         border: "1px solid rgba(255,255,255,0.09)",
@@ -1385,12 +1455,12 @@ function ChatInput({
     >
       <button
         type="button"
-        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-white/35 transition hover:bg-white/[0.08] hover:text-white/60"
+        className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-white/35 transition hover:bg-white/[0.08] hover:text-white/60 sm:h-9 sm:w-9"
         aria-label={attachLabel}
       >
         <svg
-          width="15"
-          height="15"
+          width="17"
+          height="17"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -1409,13 +1479,13 @@ function ChatInput({
         onChange={(e) => setQuestion(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleAsk()}
         placeholder={placeholder}
-        className="flex-1 bg-transparent text-[14px] text-white outline-none placeholder:text-white/28 md:text-[15px]"
+        className="min-w-0 flex-1 bg-transparent text-[16px] leading-6 text-white outline-none placeholder:text-white/35 sm:text-[15px]"
       />
 
       <button
         onClick={handleAsk}
         disabled={isLoading}
-        className={`flex flex-shrink-0 items-center justify-center rounded-xl px-4 py-2 text-[13px] font-semibold text-white transition-all duration-150 disabled:cursor-not-allowed ${
+        className={`flex min-h-[46px] min-w-[92px] flex-shrink-0 items-center justify-center rounded-xl px-4 text-[15px] font-semibold text-white transition-all duration-150 disabled:cursor-not-allowed sm:min-w-[88px] ${
           question.trim() ? "opacity-100 active:scale-95" : "opacity-50"
         }`}
         style={{
@@ -1425,7 +1495,6 @@ function ChatInput({
           boxShadow: question.trim()
             ? "0 2px 16px rgba(56,189,248,0.25)"
             : "none",
-          minWidth: "60px",
         }}
       >
         {isLoading ? (
@@ -1468,11 +1537,11 @@ function ServiceTabs({
 }) {
   return (
     <div
-      className={`flex items-center gap-2 ${
+      className={
         compact
-          ? "scrollbar-hide justify-start overflow-x-auto"
-          : "mt-6 flex-wrap justify-center"
-      }`}
+          ? "scrollbar-hide flex items-center gap-2 overflow-x-auto"
+          : "mt-4 grid w-full grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:justify-center"
+      }
     >
       {services.map((svc) => {
         const active = selectedService === svc.id;
@@ -1481,8 +1550,10 @@ function ServiceTabs({
           <button
             key={svc.id}
             onClick={() => setSelectedService(svc.id)}
-            className={`flex flex-shrink-0 items-center gap-1.5 rounded-full border text-[12px] font-medium transition-all duration-150 active:scale-95 ${
-              compact ? "px-3 py-1.5" : "px-4 py-2 text-[13px]"
+            className={`flex items-center gap-1.5 rounded-full border font-medium transition-all duration-150 active:scale-95 ${
+              compact
+                ? "min-h-10 flex-shrink-0 whitespace-nowrap px-3 text-[13px]"
+                : "min-h-12 w-full justify-center px-3 text-[14px] sm:w-auto"
             } ${
               active
                 ? "border-sky-500/50 text-sky-300"
@@ -1494,7 +1565,9 @@ function ServiceTabs({
                 : { background: "rgba(255,255,255,0.03)" }
             }
           >
-            <span className="text-[11px]">{svc.glyph}</span>
+            <span className={compact ? "text-[13px]" : "text-[15px]"}>
+              {svc.glyph}
+            </span>
             {serviceLabels[svc.id]}
           </button>
         );
