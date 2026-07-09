@@ -49,7 +49,6 @@ type BirthDetailsStatus = {
 type LandingStageSize = {
   scale: number;
   left: number;
-  top: number;
 };
 
 const PENDING_QUESTION_KEY = "bhagya_pending_question_v1";
@@ -132,7 +131,6 @@ function useLandingStageSize() {
   const [stage, setStage] = useState<LandingStageSize>({
     scale: 1,
     left: 0,
-    top: 0,
   });
 
   useEffect(() => {
@@ -145,12 +143,13 @@ function useLandingStageSize() {
       const height = element.clientHeight;
       const baseWidth = 360;
       const baseHeight = 800;
-      const scale = Math.min(width / baseWidth, height / baseHeight, 1.15);
+      const widthScale = width / baseWidth;
+      const heightScale = height / baseHeight;
+      const scale = Math.min(widthScale, heightScale, 1.08);
 
       setStage({
         scale,
         left: Math.max(0, (width - baseWidth * scale) / 2),
-        top: Math.max(0, (height - baseHeight * scale) / 2),
       });
     };
 
@@ -1635,7 +1634,7 @@ function UniversalMobileLanding({
   setSelectedLanguage: (language: LanguageCode) => void;
   t: UiText;
 }) {
-  const { viewportRef, scale, left, top } = useLandingStageSize();
+  const { viewportRef, scale, left } = useLandingStageSize();
   const isEnglish = selectedLanguage === "english";
   const badge = isEnglish
     ? "Astrology \u00b7 Numerology \u00b7 Tarot \u00b7 Palmistry"
@@ -1651,7 +1650,7 @@ function UniversalMobileLanding({
           <div
             className="bhagya-reference-stage"
             style={{
-              transform: `translate3d(${left}px, ${top}px, 0) scale(${scale})`,
+              transform: `translate3d(${left}px, 0, 0) scale(${scale})`,
             }}
           >
             <ReferenceLandingBackground />
@@ -1784,10 +1783,21 @@ function ReferenceLandingBackground() {
       <StarField />
 
       <div className="bhagya-reference-mandala-stage">
-        <div className="bhagya-reference-mandala-layer bhagya-reference-mandala-outer" />
-        <div className="bhagya-reference-mandala-layer bhagya-reference-mandala-inner" />
-        <div className="bhagya-reference-mandala-layer bhagya-reference-mandala-main" />
-        <div className="bhagya-reference-mandala-layer bhagya-reference-mandala-glow" />
+        <div className="bhagya-mandala-center bhagya-orbit-outer-shell">
+          <div className="bhagya-orbit bhagya-orbit-outer" />
+        </div>
+
+        <div className="bhagya-mandala-center bhagya-orbit-inner-shell">
+          <div className="bhagya-orbit bhagya-orbit-inner" />
+        </div>
+
+        <div className="bhagya-mandala-center bhagya-image-shell">
+          <div className="bhagya-mandala-image" />
+        </div>
+
+        <div className="bhagya-mandala-center bhagya-glow-shell">
+          <div className="bhagya-mandala-glow" />
+        </div>
       </div>
 
       <div
