@@ -13,6 +13,7 @@ import {
 import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
 import LanguageSelector from "@/components/LanguageSelector";
 import PalmScanAnimation from "@/components/PalmScanAnimation";
+import { preparePalmImage } from "@/lib/images/preparePalmImage";
 import {
   DEFAULT_LANGUAGE_CODE,
   LANGUAGE_DEFAULT_MIGRATION_KEY,
@@ -77,8 +78,11 @@ const IMAGE_MESSAGE_TYPE = "bhagya.image";
 const PALM_UPLOAD_TEXT = "Palm photo uploaded for analysis.";
 const PALM_ANALYSIS_LOADING_TEXT = "Bhagya is studying the lines of your palm...";
 const PALM_ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const PALM_MAX_FILE_SIZE = 15 * 1024 * 1024;
+const PALM_MAX_FILE_SIZE = 20 * 1024 * 1024;
 const PALM_IMAGE_BUCKET = "palm-images";
+const PALM_PREPARING_STATUS = "Preparing your palm photo...";
+const PALM_UPLOADING_STATUS = "Uploading securely...";
+const PALM_MAPPING_STATUS = "Mapping your palm...";
 const services: {
   id: ServiceType;
   label: string;
@@ -205,6 +209,14 @@ function chatHasPalmImage(chat: Chat | undefined) {
   );
 }
 
+function chatHasPalmStoragePath(chat: Chat | undefined, storagePath: string) {
+  return Boolean(
+    chat?.messages.some(
+      (message) => parseMessageContent(message.content).storagePath === storagePath
+    )
+  );
+}
+
 function getPalmAnalysisErrorMessage(data: unknown, fallbackStatus: number) {
   const fallback = `Could not analyse your palm. Error ${fallbackStatus}.`;
 
@@ -216,9 +228,15 @@ function getPalmAnalysisErrorMessage(data: unknown, fallbackStatus: number) {
   const messages: Record<string, string> = {
     AUTH_REQUIRED: "Please sign in again to analyse your palm.",
     IMAGE_REQUIRED: "Please upload a palm photo first.",
-    IMAGE_TOO_LARGE: "Please choose an image smaller than 15 MB.",
+    IMAGE_TOO_LARGE: "Please choose an image smaller than 20 MB.",
     UNSUPPORTED_IMAGE: "Please upload a JPG, PNG or WEBP image.",
-    PALM_UPLOAD_FAILED: "Your palm photo could not be uploaded. Please try again.",
+    PALM_PREPARATION_FAILED:
+      "This photo is too large to process. Please choose a slightly smaller image.",
+    PALM_UPLOAD_FAILED:
+      "Your palm photo could not be uploaded. Please check your connection and try again.",
+    PALM_IMAGE_ACCESS_FAILED:
+      "Bhagya could not access this photo. Please upload it again.",
+    INVALID_STORAGE_PATH: "This palm photo cannot be accessed.",
     STORAGE_PATH_REQUIRED:
       "The image was uploaded, but the palm analysis could not be completed.",
     STORAGE_PATH_FORBIDDEN:
@@ -229,7 +247,7 @@ function getPalmAnalysisErrorMessage(data: unknown, fallbackStatus: number) {
       "Your reading was generated, but could not be saved. Please try again.",
     OPENAI_TIMEOUT: "The palm analysis took too long. Please try again.",
     PALM_ANALYSIS_FAILED:
-      "The image was uploaded, but the palm analysis could not be completed.",
+      "Bhagya could not analyse this palm photo right now. Please try again.",
   };
 
   if (code === "PALM_NOT_CLEAR" && message) return message;
@@ -300,6 +318,7 @@ export default function Home() {
   const [isPalmAnalyzing, setIsPalmAnalyzing] = useState(false);
   const [palmScanImageUrl, setPalmScanImageUrl] = useState("");
   const [isPalmScanReady, setIsPalmScanReady] = useState(false);
+  const [palmScanStatus, setPalmScanStatus] = useState(PALM_MAPPING_STATUS);
   const [palmAnalysisError, setPalmAnalysisError] =
     useState<PalmAnalysisError>(null);
 
@@ -697,24 +716,75 @@ export default function Home() {
   }) {
     if (image.storagePath) return image;
 
-    const safeFileName = sanitizePalmFileName(image.name || "palm-photo");
+    setPalmScanStatus(PALM_PREPARING_STATUS);
+    const preparedFile = await preparePalmImage(image.file).catch((error) => {
+      console.error("[palmistry] image preparation failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error("PALM_PREPARATION_FAILED");
+    });
+
+    setPalmScanStatus(PALM_UPLOADING_STATUS);
+    const safeFileName = sanitizePalmFileName(
+      preparedFile.name || image.name || "palm-upload.jpg"
+    ).toLowerCase();
     const storagePath = `${userId}/${chatId}/${Date.now()}-${safeFileName}`;
-    const { error } = await supabase.storage
+    const { data, error } = await supabase.storage
       .from(PALM_IMAGE_BUCKET)
-      .upload(storagePath, image.file, {
-        contentType: image.mimeType,
+      .upload(storagePath, preparedFile, {
+        contentType: preparedFile.type,
         cacheControl: "3600",
         upsert: false,
       });
 
     if (error) {
+      console.error("[palmistry] storage upload failed", {
+        message: error.message,
+        statusCode: "statusCode" in error ? error.statusCode : undefined,
+      });
       throw new Error("PALM_UPLOAD_FAILED");
     }
 
+    setPalmScanStatus(PALM_MAPPING_STATUS);
+
     return {
       ...image,
-      storagePath,
+      file: preparedFile,
+      name: preparedFile.name,
+      size: preparedFile.size,
+      mimeType: preparedFile.type,
+      storagePath: data?.path || storagePath,
     };
+  }
+
+  async function cleanupUnsavedPalmImage(image: UploadedImage | null) {
+    if (!image?.storagePath) return;
+
+    const isSaved = chats.some((chat) =>
+      chatHasPalmStoragePath(chat, image.storagePath || "")
+    );
+
+    if (isSaved) return;
+
+    const { error } = await supabase.storage
+      .from(PALM_IMAGE_BUCKET)
+      .remove([image.storagePath]);
+
+    if (error) {
+      console.error("[palmistry] storage cleanup failed", {
+        message: error.message,
+        statusCode: "statusCode" in error ? error.statusCode : undefined,
+      });
+    }
+  }
+
+  function handlePalmImageChange(nextImage: UploadedImage | null) {
+    if (!nextImage) {
+      void cleanupUnsavedPalmImage(palmImage);
+    }
+
+    setPalmImage(nextImage);
+    setPalmAnalysisError(null);
   }
 
   async function handleAsk() {
@@ -959,7 +1029,7 @@ export default function Home() {
     if (image.file.size > PALM_MAX_FILE_SIZE) {
       setPalmAnalysisError({
         code: "IMAGE_TOO_LARGE",
-        message: "Please choose an image smaller than 15 MB.",
+        message: "Please choose an image smaller than 20 MB.",
         image,
       });
       return;
@@ -997,6 +1067,7 @@ export default function Home() {
     setSelectedService(service);
     setPalmScanImageUrl(image.previewUrl);
     setIsPalmScanReady(false);
+    setPalmScanStatus(PALM_PREPARING_STATUS);
     setIsLoading(true);
     setIsPalmAnalyzing(true);
 
@@ -1123,6 +1194,7 @@ export default function Home() {
           messages: conversationHistory,
         }),
       });
+      setPalmScanStatus(PALM_MAPPING_STATUS);
 
       const res = await responsePromise;
       const data = await res.json().catch(() => null);
@@ -1213,13 +1285,17 @@ export default function Home() {
       );
       setPalmAnalysisError({
         code:
-          error instanceof Error && error.message === "PALM_UPLOAD_FAILED"
-            ? "PALM_UPLOAD_FAILED"
+          error instanceof Error &&
+          (error.message === "PALM_PREPARATION_FAILED" ||
+            error.message === "PALM_UPLOAD_FAILED")
+            ? error.message
             : "PALM_ANALYSIS_FAILED",
         message:
-          error instanceof Error && error.message === "PALM_UPLOAD_FAILED"
-            ? "Your palm photo could not be uploaded. Please try again."
-            : "The image was uploaded, but the palm analysis could not be completed.",
+          error instanceof Error && error.message === "PALM_PREPARATION_FAILED"
+            ? "This photo is too large to process. Please choose a slightly smaller image."
+            : error instanceof Error && error.message === "PALM_UPLOAD_FAILED"
+            ? "Your palm photo could not be uploaded. Please check your connection and try again."
+            : "Bhagya could not analyse this palm photo right now. Please try again.",
         image: uploadedImage,
       });
       setPalmScanImageUrl("");
@@ -1230,6 +1306,7 @@ export default function Home() {
         setIsPalmAnalyzing(false);
         setPalmScanImageUrl("");
         setIsPalmScanReady(false);
+        setPalmScanStatus(PALM_MAPPING_STATUS);
       }
     }
   }
@@ -1538,8 +1615,7 @@ export default function Home() {
             selectedLanguage={selectedLanguage}
             setSelectedLanguage={setSelectedLanguage}
             palmImage={palmImage}
-            setPalmImage={setPalmImage}
-            clearPalmAnalysisError={() => setPalmAnalysisError(null)}
+            onPalmImageChange={handlePalmImageChange}
             handlePalmAnalyze={handlePalmAnalyze}
             isPalmAnalyzing={isPalmAnalyzing}
             t={t}
@@ -1637,13 +1713,10 @@ export default function Home() {
                 <ImageUploader
                   mode="palmistry"
                   accept="image/*"
-                  maxSize={15}
+                  maxSize={20}
                   allowCamera
                   value={palmImage}
-                  onChange={(nextImage) => {
-                    setPalmImage(nextImage);
-                    setPalmAnalysisError(null);
-                  }}
+                  onChange={handlePalmImageChange}
                   onAnalyze={handlePalmAnalyze}
                   isAnalyzing={isPalmAnalyzing}
                   disabled={isLoading || isCheckingAuth}
@@ -1967,7 +2040,8 @@ export default function Home() {
                     message={palmAnalysisError.message}
                     onRetry={() => handlePalmAnalyze(palmAnalysisError.image)}
                     onReplace={() => {
-                      setPalmImage(palmAnalysisError.image);
+                      void cleanupUnsavedPalmImage(palmAnalysisError.image);
+                      setPalmImage(null);
                       setPalmAnalysisError(null);
                     }}
                     isLoading={isLoading || isPalmAnalyzing}
@@ -2003,13 +2077,10 @@ export default function Home() {
                   <ImageUploader
                     mode="palmistry"
                     accept="image/*"
-                    maxSize={15}
+                    maxSize={20}
                     allowCamera
                     value={palmImage}
-                    onChange={(nextImage) => {
-                      setPalmImage(nextImage);
-                      setPalmAnalysisError(null);
-                    }}
+                    onChange={handlePalmImageChange}
                     onAnalyze={handlePalmAnalyze}
                     isAnalyzing={isPalmAnalyzing}
                     disabled={isLoading || isCheckingAuth}
@@ -2037,10 +2108,12 @@ export default function Home() {
         <PalmScanAnimation
           imageUrl={palmScanImageUrl}
           isComplete={isPalmScanReady}
+          status={palmScanStatus}
           onAnimationFinished={() => {
             setIsPalmAnalyzing(false);
             setIsPalmScanReady(false);
             setPalmScanImageUrl("");
+            setPalmScanStatus(PALM_MAPPING_STATUS);
           }}
         />
       )}
@@ -2208,8 +2281,7 @@ function UniversalMobileLanding({
   selectedLanguage,
   setSelectedLanguage,
   palmImage,
-  setPalmImage,
-  clearPalmAnalysisError,
+  onPalmImageChange,
   handlePalmAnalyze,
   isPalmAnalyzing,
   t,
@@ -2224,8 +2296,7 @@ function UniversalMobileLanding({
   selectedLanguage: LanguageCode;
   setSelectedLanguage: (language: LanguageCode) => void;
   palmImage: UploadedImage | null;
-  setPalmImage: (image: UploadedImage | null) => void;
-  clearPalmAnalysisError: () => void;
+  onPalmImageChange: (image: UploadedImage | null) => void;
   handlePalmAnalyze: (image: UploadedImage) => void;
   isPalmAnalyzing: boolean;
   t: UiText;
@@ -2299,13 +2370,10 @@ function UniversalMobileLanding({
               <ImageUploader
                 mode="palmistry"
                 accept="image/*"
-                maxSize={15}
+                maxSize={20}
                 allowCamera
                 value={palmImage}
-                onChange={(nextImage) => {
-                  setPalmImage(nextImage);
-                  clearPalmAnalysisError();
-                }}
+                onChange={onPalmImageChange}
                 onAnalyze={handlePalmAnalyze}
                 isAnalyzing={isPalmAnalyzing}
                 disabled={isLoading}

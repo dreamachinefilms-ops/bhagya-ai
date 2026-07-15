@@ -46,7 +46,7 @@ function readAsDataUrl(file: File) {
 export default function ImageUploader({
   mode = "generic",
   accept = "image/*",
-  maxSize = 15,
+  maxSize = 20,
   allowCamera = false,
   value,
   onChange,

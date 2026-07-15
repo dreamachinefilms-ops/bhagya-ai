@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type PalmScanAnimationProps = {
   imageUrl: string;
   isComplete: boolean;
+  status?: string;
   onAnimationFinished?: () => void;
 };
 
@@ -66,6 +67,7 @@ const lineStageIds: ScanStageId[] = ["life", "head", "heart", "fate"];
 export default function PalmScanAnimation({
   imageUrl,
   isComplete,
+  status = "Analysing your palm",
   onAnimationFinished,
 }: PalmScanAnimationProps) {
   const [stageIndex, setStageIndex] = useState(0);
@@ -201,7 +203,7 @@ export default function PalmScanAnimation({
         </div>
 
         <div className="palm-scan-info" aria-live="polite">
-          <p className="palm-scan-status">Analysing your palm</p>
+          <p className="palm-scan-status">{status}</p>
           <h2>{activeStage.title}</h2>
           <p>{activeStage.description}</p>
 

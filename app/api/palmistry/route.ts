@@ -21,7 +21,7 @@ export const runtime = "nodejs";
 
 const routeName = "api/palmistry";
 const palmBucket = "palm-images";
-const maxPalmImageSize = 15 * 1024 * 1024;
+const maxPalmImageSize = 20 * 1024 * 1024;
 const allowedPalmImageTypes = ["image/jpeg", "image/png", "image/webp"];
 
 function apiError(status: number, code: string, message: string) {
@@ -152,6 +152,7 @@ function buildImageMessageContent({
   const basePayload = {
     type: "bhagya.image",
     mode: "palmistry",
+    bucket: palmBucket,
     text: "Palm photo stored for analysis.",
     storagePath,
     imageName: fileName,
@@ -226,7 +227,7 @@ function validatePalmImageBody(body: unknown) {
       ok: false as const,
       status: 413,
       code: "IMAGE_TOO_LARGE",
-      message: "Please choose an image smaller than 15 MB.",
+      message: "Please choose an image smaller than 20 MB.",
     };
   }
 
@@ -334,8 +335,8 @@ async function handleImageAnalysisFromStorage({
   if (!isAllowedPalmStoragePath({ storagePath, userId, chatId })) {
     return apiError(
       403,
-      "STORAGE_PATH_FORBIDDEN",
-      "This palm photo cannot be analysed from your account."
+      "INVALID_STORAGE_PATH",
+      "This palm photo cannot be accessed."
     );
   }
 
@@ -352,24 +353,7 @@ async function handleImageAnalysisFromStorage({
     return apiError(404, "CHAT_NOT_FOUND", "Chat not found.");
   }
 
-  const { data: imageBlob, error: downloadError } = await supabase.storage
-    .from(palmBucket)
-    .download(storagePath);
-
-  if (downloadError || !imageBlob) {
-    logPalmistryError("image download failed", downloadError);
-    return apiError(
-      404,
-      "IMAGE_RETRIEVE_FAILED",
-      "The image was uploaded, but could not be retrieved for analysis."
-    );
-  }
-
-  const resolvedMimeType = allowedPalmImageTypes.includes(imageBlob.type)
-    ? imageBlob.type
-    : mimeType;
-
-  if (!allowedPalmImageTypes.includes(resolvedMimeType)) {
+  if (!allowedPalmImageTypes.includes(mimeType)) {
     return apiError(
       415,
       "UNSUPPORTED_IMAGE",
@@ -377,18 +361,29 @@ async function handleImageAnalysisFromStorage({
     );
   }
 
-  if (imageBlob.size > maxPalmImageSize || fileSize > maxPalmImageSize) {
+  if (fileSize > maxPalmImageSize) {
     return apiError(
       413,
       "IMAGE_TOO_LARGE",
-      "Please choose an image smaller than 15 MB."
+      "Please choose an image smaller than 20 MB."
+    );
+  }
+
+  const { data: signedData, error: signedError } = await supabase.storage
+    .from(palmBucket)
+    .createSignedUrl(storagePath, 300);
+
+  if (signedError || !signedData?.signedUrl) {
+    logPalmistryError("signed URL failed", signedError);
+    return apiError(
+      404,
+      "PALM_IMAGE_ACCESS_FAILED",
+      "Bhagya could not access this palm photo. Please upload it again."
     );
   }
 
   const conversationText = buildConversationText(messages, question);
   const profile = await getSavedUserProfile({ request, userId }).catch(() => null);
-  const imageBuffer = Buffer.from(await imageBlob.arrayBuffer());
-  const dataUrl = `data:${resolvedMimeType};base64,${imageBuffer.toString("base64")}`;
 
   try {
     const rawAnswer = await callBhagyaOpenAI({
@@ -400,7 +395,7 @@ async function handleImageAnalysisFromStorage({
         wantsJson: true,
       }),
       input: conversationText,
-      imageUrl: dataUrl,
+      imageUrl: signedData.signedUrl,
     });
     const parsedAnswer = parsePalmReadingJson(rawAnswer);
 
@@ -413,20 +408,12 @@ async function handleImageAnalysisFromStorage({
       );
     }
 
-    const { data: signedData, error: signedError } = await supabase.storage
-      .from(palmBucket)
-      .createSignedUrl(storagePath, 60 * 60);
-
-    if (signedError) {
-      logPalmistryError("storage signed url failed", signedError);
-    }
-
     const imageMessage = buildImageMessageContent({
       storagePath,
-      signedUrl: signedData?.signedUrl,
+      signedUrl: signedData.signedUrl,
       fileName,
-      mimeType: resolvedMimeType,
-      size: imageBlob.size || fileSize,
+      mimeType,
+      size: fileSize,
     });
     const answer = parsedAnswer.reading || rawAnswer;
 
@@ -455,7 +442,7 @@ async function handleImageAnalysisFromStorage({
       saved: true,
     });
   } catch (error) {
-    logPalmistryError("analysis failed", error);
+    logPalmistryError("OpenAI analysis failed", error);
 
     if (isOpenAiTimeout(error)) {
       return apiError(
