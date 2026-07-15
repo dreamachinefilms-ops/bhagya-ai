@@ -328,54 +328,6 @@ function getTarotSessionErrorMessage(payload: Record<string, unknown>) {
     : "The cards could not be prepared. Please check your connection.";
 }
 
-function getTarotPreviewSpread(question: string, spreadType: TarotSpreadType) {
-  if (spreadType === "one-card") {
-    return {
-      spreadName: "Guidance",
-      positions: ["Guidance"],
-      availableCount: 10,
-    };
-  }
-
-  if (/\b(career|job|work|business|profession|promotion|office)\b/i.test(question)) {
-    return {
-      spreadName: "Career Guidance",
-      positions: ["Current Path", "Challenge or Opportunity", "Guidance"],
-      availableCount: 15,
-    };
-  }
-
-  if (/\b(love|relationship|marriage|partner|ex|crush|connection)\b/i.test(question)) {
-    return {
-      spreadName: "Relationship Mirror",
-      positions: ["Your Energy", "Other Energy", "Connection"],
-      availableCount: 15,
-    };
-  }
-
-  if (/\b(decision|choose|choice|option|should i|what should)\b/i.test(question)) {
-    return {
-      spreadName: "Decision Path",
-      positions: ["Current Situation", "What to Consider", "Likely Direction"],
-      availableCount: 15,
-    };
-  }
-
-  if (/\b(growth|healing|self|personal|pattern|spiritual|improve)\b/i.test(question)) {
-    return {
-      spreadName: "Personal Growth",
-      positions: ["Current Pattern", "What Needs Attention", "Growth Direction"],
-      availableCount: 15,
-    };
-  }
-
-  return {
-    spreadName: "Past, Present, Direction",
-    positions: ["Past Influence", "Present Energy", "Likely Direction"],
-    availableCount: 15,
-  };
-}
-
 function chatHasPalmStoragePath(chat: Chat | undefined, storagePath: string) {
   return Boolean(
     chat?.messages.some(
@@ -983,27 +935,17 @@ export default function Home() {
 
     setSelectedService("tarot");
     setTarotError("");
-    const previewSpread = getTarotPreviewSpread(cleanQuestion, tarotSpreadType);
     setTarotQuestion(cleanQuestion);
-    setTarotSession({
-      id: "pending",
-      spreadType: tarotSpreadType,
-      spreadName: previewSpread.spreadName,
-      selectionCount: previewSpread.positions.length,
-      availablePositions: Array.from(
-        { length: previewSpread.availableCount },
-        (_, index) => index
-      ),
-      spreadPositions: previewSpread.positions,
-    });
+    setTarotSession(null);
     setTarotSelectedIndexes([]);
-    setTarotStatus("selecting");
+    setTarotStatus("shuffling");
     setIsLoading(true);
 
     let chatId = activeChatId;
     let workingChat = chatId
       ? chats.find((chat) => chat.id === chatId) || null
       : null;
+    let pendingChat: Chat | null = null;
 
     if (workingChat && workingChat.service !== "tarot") {
       chatId = null;
@@ -1028,8 +970,7 @@ export default function Home() {
 
       chatId = newChat.id;
       workingChat = newChat;
-      setActiveChatId(chatId);
-      setChats((prev) => [newChat, ...prev]);
+      pendingChat = newChat;
     }
 
     if (!chatId || !workingChat) {
@@ -1105,6 +1046,10 @@ export default function Home() {
         ),
       });
       setTarotSelectedIndexes([]);
+      if (pendingChat) {
+        setActiveChatId(pendingChat.id);
+        setChats((prev) => [pendingChat, ...prev]);
+      }
       setTarotStatus("selecting");
     } catch (error) {
       setTarotError(
@@ -3353,9 +3298,14 @@ function ReadingSlots({
                 : "border-white/[0.08] bg-[#07101f]/70"
             }`}
           >
-            <div className="mx-auto aspect-[2/3] w-14 rounded-[14px] border border-dashed border-sky-100/18 p-[2px] sm:w-16">
+            <div className="relative mx-auto aspect-[2/3] w-14 rounded-[14px] border border-dashed border-sky-100/18 p-[2px] sm:w-16">
               {assigned ? (
-                <TarotCardBack selected compact selectionNumber={index + 1} />
+                <>
+                  <div className="absolute inset-[-12px] rounded-full bg-[radial-gradient(circle,rgba(192,132,252,0.24),rgba(168,85,247,0.14)_38%,transparent_70%)] blur-md" />
+                  <div className="relative z-10 h-full w-full">
+                    <TarotCardBack selected compact selectionNumber={index + 1} />
+                  </div>
+                </>
               ) : (
                 <div className="flex h-full w-full items-center justify-center rounded-[12px] bg-white/[0.025] text-sky-100/22">
                   <TarotSparkleIcon className="h-4 w-4" />
@@ -3403,7 +3353,7 @@ function TarotDeck({
               disabled={isLoading}
               className={`group relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 rounded-[17px] border p-[1px] transition duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
                 selected
-                  ? "z-20 border-sky-100/75 bg-sky-300/15 opacity-80 shadow-[0_18px_48px_rgba(34,199,242,0.22)]"
+                  ? "z-20 border-white/95 bg-sky-300/15 opacity-90 shadow-[0_18px_48px_rgba(255,255,255,0.16),0_16px_44px_rgba(34,199,242,0.2)] ring-1 ring-white/75"
                   : "z-10 border-white/[0.09] bg-white/[0.035] hover:z-30 hover:border-sky-100/45 hover:shadow-[0_18px_46px_rgba(34,199,242,0.16)]"
               } disabled:cursor-not-allowed`}
               style={{
@@ -3546,7 +3496,10 @@ function TarotExperience({
             className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#08b7f2] to-[#2563eb] px-5 text-sm font-semibold text-white shadow-[0_18px_48px_rgba(34,199,242,0.22)] transition hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none"
           >
             {isShuffling ? (
-              <LoadingDots />
+              <>
+                <LoadingDots />
+                Preparing your cards...
+              </>
             ) : (
               <>
                 <TarotSparkleIcon className="h-4 w-4" />
