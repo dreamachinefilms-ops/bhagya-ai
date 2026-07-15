@@ -287,6 +287,47 @@ function chatHasTarotReading(chat: Chat | undefined) {
   );
 }
 
+async function parseJsonResponse(response: Response) {
+  const rawResponse = await response.text();
+
+  if (!rawResponse) return {};
+
+  try {
+    const parsed: unknown = JSON.parse(rawResponse);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getTarotSessionErrorMessage(payload: Record<string, unknown>) {
+  const error = typeof payload.error === "string" ? payload.error : payload.code;
+
+  if (error === "AUTH_REQUIRED") {
+    return "Your session has expired. Please sign in again.";
+  }
+
+  if (error === "INVALID_REQUEST") {
+    return "Please enter a question and choose a reading type.";
+  }
+
+  if (error === "CHAT_NOT_FOUND" || error === "INVALID_CHAT_SERVICE") {
+    return "The Tarot conversation could not be created. Please refresh and try again.";
+  }
+
+  if (error === "TAROT_STORAGE_NOT_CONFIGURED") {
+    return "Tarot setup is not complete yet.";
+  }
+
+  if (error === "SESSION_CREATE_FAILED") {
+    return "The cards could not be prepared. Please try again.";
+  }
+
+  return typeof payload.message === "string"
+    ? payload.message
+    : "The cards could not be prepared. Please check your connection.";
+}
+
 function chatHasPalmStoragePath(chat: Chat | undefined, storagePath: string) {
   return Boolean(
     chat?.messages.some(
@@ -936,7 +977,7 @@ export default function Home() {
         method: "POST",
         headers,
         body: JSON.stringify({
-          action: "start-session",
+          action: "create-session",
           chatId,
           question: cleanQuestion,
           spreadType: tarotSpreadType,
@@ -945,19 +986,33 @@ export default function Home() {
         }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
 
       if (!res.ok) {
-        throw new Error(
-          typeof data.message === "string"
-            ? data.message
-            : "The cards could not be shuffled. Please try again."
-        );
+        if (process.env.NODE_ENV !== "production") {
+          console.error("Tarot session request failed", {
+            status: res.status,
+            error: data.error,
+            message: data.message,
+          });
+        }
+
+        throw new Error(getTarotSessionErrorMessage(data));
       }
+
+      const availablePositions =
+        typeof data.availablePositions === "number"
+          ? Array.from({ length: data.availablePositions }, (_, index) => index)
+          : Array.isArray(data.availablePositions)
+            ? data.availablePositions.filter(
+                (index: unknown): index is number =>
+                  typeof index === "number" && Number.isInteger(index)
+              )
+            : [];
 
       if (
         typeof data.readingSessionId !== "string" ||
-        !Array.isArray(data.availablePositions) ||
+        availablePositions.length <= 0 ||
         !Array.isArray(data.spreadPositions)
       ) {
         throw new Error("Bhagya could not prepare the Tarot spread.");
@@ -975,10 +1030,7 @@ export default function Home() {
             : tarotSpreadType === "one-card"
               ? 1
               : 3,
-        availablePositions: data.availablePositions.filter(
-          (index: unknown): index is number =>
-            typeof index === "number" && Number.isInteger(index)
-        ),
+        availablePositions,
         spreadPositions: data.spreadPositions.filter(
           (position: unknown): position is string => typeof position === "string"
         ),
@@ -989,7 +1041,7 @@ export default function Home() {
       setTarotError(
         error instanceof Error
           ? error.message
-          : "The cards could not be shuffled. Please try again."
+          : "The cards could not be prepared. Please check your connection."
       );
       setTarotStatus("asking");
     } finally {

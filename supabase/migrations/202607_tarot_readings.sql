@@ -10,7 +10,7 @@ create table if not exists public.tarot_sessions (
   spread_positions jsonb not null,
   shuffled_card_ids jsonb not null,
   selected_indexes jsonb,
-  status text not null default 'selecting' check (status in ('selecting', 'revealed', 'expired')),
+  status text not null default 'selecting' check (status in ('selecting', 'revealing', 'interpreting', 'complete', 'expired', 'error')),
   expires_at timestamptz not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -53,6 +53,10 @@ alter table public.tarot_sessions
   alter column spread_name set not null,
   alter column expires_at set not null;
 
+update public.tarot_sessions
+set status = 'complete'
+where status = 'revealed';
+
 alter table public.tarot_sessions
   drop constraint if exists tarot_sessions_spread_type_check,
   add constraint tarot_sessions_spread_type_check
@@ -61,7 +65,7 @@ alter table public.tarot_sessions
 alter table public.tarot_sessions
   drop constraint if exists tarot_sessions_status_check,
   add constraint tarot_sessions_status_check
-    check (status in ('selecting', 'revealed', 'expired'));
+    check (status in ('selecting', 'revealing', 'interpreting', 'complete', 'expired', 'error'));
 
 alter table public.tarot_readings
   add column if not exists user_id uuid references auth.users(id) on delete cascade,
@@ -96,13 +100,17 @@ alter table public.tarot_sessions enable row level security;
 alter table public.tarot_readings enable row level security;
 
 drop policy if exists "Users can select own tarot sessions" on public.tarot_sessions;
-create policy "Users can select own tarot sessions"
+drop policy if exists "Users can read own tarot sessions" on public.tarot_sessions;
+create policy "Users can read own tarot sessions"
 on public.tarot_sessions for select
+to authenticated
 using (auth.uid() = user_id);
 
 drop policy if exists "Users can insert own tarot sessions" on public.tarot_sessions;
-create policy "Users can insert own tarot sessions"
+drop policy if exists "Users can create own tarot sessions" on public.tarot_sessions;
+create policy "Users can create own tarot sessions"
 on public.tarot_sessions for insert
+to authenticated
 with check (
   auth.uid() = user_id
   and exists (
@@ -115,12 +123,14 @@ with check (
 drop policy if exists "Users can update own tarot sessions" on public.tarot_sessions;
 create policy "Users can update own tarot sessions"
 on public.tarot_sessions for update
+to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
 drop policy if exists "Users can delete own tarot sessions" on public.tarot_sessions;
 create policy "Users can delete own tarot sessions"
 on public.tarot_sessions for delete
+to authenticated
 using (auth.uid() = user_id);
 
 drop policy if exists "Users can select own tarot readings" on public.tarot_readings;
@@ -153,6 +163,12 @@ using (auth.uid() = user_id);
 
 create index if not exists tarot_sessions_user_chat_created_idx
 on public.tarot_sessions (user_id, chat_id, created_at desc);
+
+create index if not exists tarot_sessions_user_id_idx
+on public.tarot_sessions (user_id);
+
+create index if not exists tarot_sessions_chat_id_idx
+on public.tarot_sessions (chat_id);
 
 create index if not exists tarot_sessions_expires_at_idx
 on public.tarot_sessions (expires_at);

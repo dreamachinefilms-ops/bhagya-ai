@@ -1,4 +1,4 @@
-import { randomInt } from "crypto";
+import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/backend/auth";
 import { getSavedUserProfile } from "@/lib/backend/birthDetailsMemory";
@@ -27,7 +27,7 @@ import {
 
 const routeName = "api/tarot";
 const reversalProbability = 0.25;
-const sessionTtlMs = 20 * 60 * 1000;
+const sessionTtlMs = 30 * 60 * 1000;
 const availableCardCounts: Record<TarotSpreadType, number> = {
   "one-card": 10,
   "three-card": 15,
@@ -38,6 +38,10 @@ function apiError(status: number, code: string, message: string) {
     { success: false, error: code, code, message },
     { status }
   );
+}
+
+function invalidRequest(message = "Please enter a question and choose a reading type.") {
+  return apiError(400, "INVALID_REQUEST", message);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -55,6 +59,7 @@ function getSupabaseErrorInfo(error: unknown) {
       code: undefined,
       message: error instanceof Error ? error.message : String(error),
       details: undefined,
+      hint: undefined,
     };
   }
 
@@ -62,25 +67,18 @@ function getSupabaseErrorInfo(error: unknown) {
     code: typeof error.code === "string" ? error.code : undefined,
     message: typeof error.message === "string" ? error.message : undefined,
     details: typeof error.details === "string" ? error.details : undefined,
+    hint: typeof error.hint === "string" ? error.hint : undefined,
   };
 }
 
 function getTarotDatabaseErrorResponse(error: unknown) {
   const info = getSupabaseErrorInfo(error);
 
-  if (info.code === "42P01") {
+  if (info.code === "42P01" || info.code === "42703" || info.code === "PGRST204") {
     return apiError(
-      500,
-      "TAROT_TABLE_MISSING",
-      "The Tarot database tables are missing. Please run the Tarot Supabase migration."
-    );
-  }
-
-  if (info.code === "42703" || info.code === "PGRST204") {
-    return apiError(
-      500,
-      "TAROT_SCHEMA_MISMATCH",
-      "The Tarot database schema is out of date. Please run the latest Tarot migration."
+      503,
+      "TAROT_STORAGE_NOT_CONFIGURED",
+      "Tarot storage is not configured yet."
     );
   }
 
@@ -102,7 +100,7 @@ function getTarotDatabaseErrorResponse(error: unknown) {
 
   return apiError(
     500,
-    "DATABASE_ERROR",
+    "SESSION_CREATE_FAILED",
     "The cards could not be prepared. Please try again."
   );
 }
@@ -111,7 +109,19 @@ function sanitizeQuestion(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 1200) : "";
 }
 
-function secureShuffle<T>(items: T[]) {
+function validateTarotDeck(): void {
+  if (tarotDeck.length !== 78) {
+    throw new Error(`Invalid Tarot deck size: ${tarotDeck.length}`);
+  }
+
+  const ids = tarotDeck.map((card) => card.id);
+
+  if (new Set(ids).size !== ids.length) {
+    throw new Error("Tarot deck contains duplicate card IDs.");
+  }
+}
+
+function secureShuffle<T>(items: readonly T[]) {
   const shuffled = [...items];
 
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
@@ -237,15 +247,15 @@ async function handleStartSession({
   });
 
   if (!isUuid(chatId)) {
-    return apiError(400, "INVALID_CHAT", "The Tarot conversation could not be created.");
+    return invalidRequest("The Tarot conversation could not be created.");
   }
 
   if (!question) {
-    return apiError(400, "MISSING_QUESTION", "Please ask the cards a question first.");
+    return invalidRequest();
   }
 
   if (!isTarotSpreadType(spreadType)) {
-    return apiError(400, "INVALID_SPREAD_TYPE", "Please choose a valid Tarot spread.");
+    return invalidRequest();
   }
 
   const supabase = createSupabaseUserClient(request);
@@ -284,23 +294,42 @@ async function handleStartSession({
     return apiError(400, "INVALID_CHAT_SERVICE", "The Tarot conversation could not be created.");
   }
 
+  validateTarotDeck();
   const spread = getTarotSpread({ spreadType, question });
   const shuffledCardIds = secureShuffle(tarotDeck.map((card) => card.id));
+  devLog("secure deck generated", {
+    routeName,
+    deckSize: tarotDeck.length,
+    uniqueCardIds: new Set(shuffledCardIds).size,
+  });
+  const expiresAt = new Date(Date.now() + sessionTtlMs).toISOString();
+  const sessionPayload = {
+    user_id: userId,
+    chat_id: chat.id as string,
+    question,
+    spread_type: spreadType,
+    spread_name: spread.spreadName,
+    language,
+    language_code: languageCode,
+    spread_positions: spread.positions,
+    shuffled_card_ids: shuffledCardIds,
+    selected_indexes: null,
+    status: "selecting",
+    expires_at: expiresAt,
+  };
+
+  devLog("session insert attempted", {
+    routeName,
+    chatIdPresent: Boolean(chat.id),
+    spreadType,
+    questionLength: question.length,
+    tarotSessionInsertAttempted: true,
+  });
+
   const { data, error } = await supabase
     .from("tarot_sessions")
-    .insert({
-      user_id: userId,
-      chat_id: chatId,
-      question,
-      spread_type: spreadType,
-      spread_name: spread.spreadName,
-      language,
-      language_code: languageCode,
-      spread_positions: spread.positions,
-      shuffled_card_ids: shuffledCardIds,
-      expires_at: new Date(Date.now() + sessionTtlMs).toISOString(),
-    })
-    .select("id")
+    .insert(sessionPayload)
+    .select("id, spread_type, spread_positions, expires_at")
     .single();
 
   if (error) {
@@ -312,6 +341,8 @@ async function handleStartSession({
       questionLength: question.length,
       supabaseErrorCode: info.code,
       supabaseErrorMessage: info.message,
+      supabaseErrorDetails: info.details,
+      supabaseErrorHint: info.hint,
       httpStatus: info.code === "42501" ? 403 : 500,
       tarotSessionInsertSucceeded: false,
     });
@@ -319,6 +350,7 @@ async function handleStartSession({
       code: info.code,
       message: info.message,
       details: info.details,
+      hint: info.hint,
     });
     return getTarotDatabaseErrorResponse(error);
   }
@@ -336,11 +368,9 @@ async function handleStartSession({
     success: true,
     readingSessionId: data.id,
     selectionCount: spread.positions.length,
-    availablePositions: Array.from(
-      { length: availableCardCounts[spreadType] },
-      (_, index) => index
-    ),
+    availablePositions: availableCardCounts[spreadType],
     spreadPositions: spread.positions,
+    spreadType,
     spreadName: spread.spreadName,
   });
 }
@@ -501,7 +531,7 @@ async function handleReveal({
 
   await supabase
     .from("tarot_sessions")
-    .update({ status: "revealed", selected_indexes: selected.indexes })
+    .update({ status: "complete", selected_indexes: selected.indexes })
     .eq("id", readingSessionId)
     .eq("user_id", userId);
   await supabase
@@ -603,7 +633,10 @@ export async function POST(request: Request) {
       return badRequestResponse("Invalid JSON body.");
     }
 
-    if (isRecord(body) && body.action === "start-session") {
+    if (
+      isRecord(body) &&
+      (body.action === "create-session" || body.action === "start-session")
+    ) {
       return await handleStartSession({ request, userId: user.id, body });
     }
 
