@@ -646,11 +646,9 @@ input {
 
 .palm-line-overlay {
   position: absolute;
-  inset: 0;
   z-index: 7;
-  width: 100%;
-  height: 100%;
   pointer-events: none;
+  overflow: visible;
 }
 
 .palm-path {
@@ -708,6 +706,41 @@ input {
 
 .palm-marker.is-visible {
   opacity: 1;
+}
+
+.palm-line-label {
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+
+.palm-line-label.is-active,
+.palm-line-label.is-complete {
+  opacity: 1;
+}
+
+.palm-line-label.is-active {
+  filter: drop-shadow(0 0 7px rgba(56, 189, 248, 0.65));
+}
+
+.palm-line-label.is-complete {
+  opacity: 0.54;
+}
+
+.palm-line-label-bg {
+  fill: rgba(2, 8, 23, 0.68);
+  stroke: rgba(125, 211, 252, 0.32);
+  stroke-width: 1.2;
+  backdrop-filter: blur(10px);
+}
+
+.palm-line-label text {
+  fill: rgba(224, 242, 254, 0.92);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 2.2px;
+  paint-order: stroke;
+  stroke: rgba(2, 8, 23, 0.52);
+  stroke-width: 3px;
 }
 
 .palm-scan-corners {
@@ -872,6 +905,7 @@ input {
   .palm-scan-card,
   .palm-path,
   .palm-marker,
+  .palm-line-label,
   .palm-scan-stage-dots span {
     transition-duration: 0.01ms !important;
   }

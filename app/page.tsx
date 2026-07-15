@@ -24,6 +24,7 @@ import {
   type UiText,
 } from "@/lib/languages";
 import { supabase } from "@/lib/supabaseClient";
+import type { PalmVisualMap } from "@/lib/palmistry/visualMap";
 
 type ServiceType = "numerology" | "tarot" | "palmistry" | "astrology";
 
@@ -319,6 +320,7 @@ export default function Home() {
   const [palmScanImageUrl, setPalmScanImageUrl] = useState("");
   const [isPalmScanReady, setIsPalmScanReady] = useState(false);
   const [palmScanStatus, setPalmScanStatus] = useState(PALM_MAPPING_STATUS);
+  const [palmVisualMap, setPalmVisualMap] = useState<PalmVisualMap | null>(null);
   const [palmAnalysisError, setPalmAnalysisError] =
     useState<PalmAnalysisError>(null);
 
@@ -335,6 +337,9 @@ export default function Home() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const palmVisualMapCacheRef = useRef<Record<string, PalmVisualMap>>({});
+  const palmVisualMapRequestRef = useRef(0);
+  const palmScanObjectUrlRef = useRef<string | null>(null);
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const activeChatHasPalmImage = chatHasPalmImage(activeChat);
@@ -569,13 +574,23 @@ export default function Home() {
     }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (palmScanObjectUrlRef.current) {
+        URL.revokeObjectURL(palmScanObjectUrlRef.current);
+        palmScanObjectUrlRef.current = null;
+      }
+    };
+  }, []);
+
   function startNewChat() {
     setActiveChatId(null);
     setQuestion("");
     setPalmImage(null);
     setPalmAnalysisError(null);
-    setPalmScanImageUrl("");
+    clearPalmScanImageSource();
     setIsPalmScanReady(false);
+    setPalmVisualMap(null);
     setSelectedService("astrology");
     setIsLoading(false);
     setIsPalmAnalyzing(false);
@@ -590,8 +605,9 @@ export default function Home() {
     setQuestion("");
     setPalmImage(null);
     setPalmAnalysisError(null);
-    setPalmScanImageUrl("");
+    clearPalmScanImageSource();
     setIsPalmScanReady(false);
+    setPalmVisualMap(null);
     setIsLoading(false);
     setIsPalmAnalyzing(false);
     setIsSidebarOpen(false);
@@ -603,6 +619,23 @@ export default function Home() {
 
   function getServiceGlyph(serviceId: ServiceType) {
     return services.find((s) => s.id === serviceId)?.glyph ?? "✨";
+  }
+
+  function setPalmScanImageSource(url: string, isObjectUrl = false) {
+    if (palmScanObjectUrlRef.current) {
+      URL.revokeObjectURL(palmScanObjectUrlRef.current);
+      palmScanObjectUrlRef.current = null;
+    }
+
+    if (isObjectUrl) {
+      palmScanObjectUrlRef.current = url;
+    }
+
+    setPalmScanImageUrl(url);
+  }
+
+  function clearPalmScanImageSource() {
+    setPalmScanImageSource("");
   }
 
   function updateAssistantMessage(
@@ -723,12 +756,19 @@ export default function Home() {
       });
       throw new Error("PALM_PREPARATION_FAILED");
     });
+    const preparedPreviewUrl = URL.createObjectURL(preparedFile);
+
+    setPalmScanImageSource(preparedPreviewUrl, true);
 
     setPalmScanStatus(PALM_UPLOADING_STATUS);
     const safeFileName = sanitizePalmFileName(
       preparedFile.name || image.name || "palm-upload.jpg"
     ).toLowerCase();
-    const storagePath = `${userId}/${chatId}/${Date.now()}-${safeFileName}`;
+    const uploadId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${preparedFile.lastModified}-${preparedFile.size}`;
+    const storagePath = `${userId}/${chatId}/${uploadId}-${safeFileName}`;
     const { data, error } = await supabase.storage
       .from(PALM_IMAGE_BUCKET)
       .upload(storagePath, preparedFile, {
@@ -753,6 +793,7 @@ export default function Home() {
       name: preparedFile.name,
       size: preparedFile.size,
       mimeType: preparedFile.type,
+      previewUrl: preparedPreviewUrl,
       storagePath: data?.path || storagePath,
     };
   }
@@ -778,11 +819,75 @@ export default function Home() {
     }
   }
 
+  async function requestPalmVisualMap({
+    token,
+    storagePath,
+    chatId,
+  }: {
+    token: string;
+    storagePath: string;
+    chatId: string;
+  }) {
+    const cachedMap = palmVisualMapCacheRef.current[storagePath];
+
+    if (cachedMap) {
+      setPalmVisualMap(cachedMap);
+      return cachedMap;
+    }
+
+    const requestId = ++palmVisualMapRequestRef.current;
+
+    try {
+      const res = await fetch("/api/palmistry/visual-map", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          storagePath,
+          chatId,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !isRecord(data) || !isRecord(data.visualMap)) {
+        console.error("[palmistry] visual map request failed", {
+          status: res.status,
+          code: isRecord(data) ? data.code : undefined,
+        });
+        if (requestId === palmVisualMapRequestRef.current) {
+          setPalmScanStatus("Palm lines are not clear enough to trace precisely.");
+        }
+        return null;
+      }
+
+      const visualMap = data.visualMap as PalmVisualMap;
+      palmVisualMapCacheRef.current[storagePath] = visualMap;
+
+      if (requestId === palmVisualMapRequestRef.current) {
+        setPalmVisualMap(visualMap);
+      }
+
+      return visualMap;
+    } catch (error) {
+      console.error("[palmistry] visual map request failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      if (requestId === palmVisualMapRequestRef.current) {
+        setPalmScanStatus("Palm lines are not clear enough to trace precisely.");
+      }
+      return null;
+    }
+  }
+
   function handlePalmImageChange(nextImage: UploadedImage | null) {
     if (!nextImage) {
       void cleanupUnsavedPalmImage(palmImage);
     }
 
+    palmVisualMapRequestRef.current += 1;
+    setPalmVisualMap(null);
     setPalmImage(nextImage);
     setPalmAnalysisError(null);
   }
@@ -1064,8 +1169,10 @@ export default function Home() {
     });
 
     setPalmAnalysisError(null);
+    setPalmVisualMap(null);
+    palmVisualMapRequestRef.current += 1;
     setSelectedService(service);
-    setPalmScanImageUrl(image.previewUrl);
+    setPalmScanImageSource(image.storagePath ? image.dataUrl : image.previewUrl);
     setIsPalmScanReady(false);
     setPalmScanStatus(PALM_PREPARING_STATUS);
     setIsLoading(true);
@@ -1174,6 +1281,13 @@ export default function Home() {
         userId: session.user.id,
         chatId,
       });
+      const visualMapPromise = uploadedImage.storagePath
+        ? requestPalmVisualMap({
+            token: session.access_token,
+            storagePath: uploadedImage.storagePath,
+            chatId,
+          })
+        : Promise.resolve(null);
 
       const responsePromise = fetch("/api/palmistry", {
         method: "POST",
@@ -1198,6 +1312,7 @@ export default function Home() {
 
       const res = await responsePromise;
       const data = await res.json().catch(() => null);
+      void visualMapPromise;
 
       if (res.status === 401) {
         router.push("/login?next=/");
@@ -1226,7 +1341,7 @@ export default function Home() {
           message,
           image: uploadedImage,
         });
-        setPalmScanImageUrl("");
+        clearPalmScanImageSource();
         setIsPalmScanReady(false);
         return;
       }
@@ -1298,13 +1413,13 @@ export default function Home() {
             : "Bhagya could not analyse this palm photo right now. Please try again.",
         image: uploadedImage,
       });
-      setPalmScanImageUrl("");
+      clearPalmScanImageSource();
       setIsPalmScanReady(false);
     } finally {
       setIsLoading(false);
       if (!completedWithReading) {
         setIsPalmAnalyzing(false);
-        setPalmScanImageUrl("");
+        clearPalmScanImageSource();
         setIsPalmScanReady(false);
         setPalmScanStatus(PALM_MAPPING_STATUS);
       }
@@ -1317,8 +1432,9 @@ export default function Home() {
     setQuestion("");
     setPalmImage(null);
     setPalmAnalysisError(null);
-    setPalmScanImageUrl("");
+    clearPalmScanImageSource();
     setIsPalmScanReady(false);
+    setPalmVisualMap(null);
     setIsSidebarOpen(false);
 
     const headers = await getAuthHeaders();
@@ -2109,10 +2225,11 @@ export default function Home() {
           imageUrl={palmScanImageUrl}
           isComplete={isPalmScanReady}
           status={palmScanStatus}
+          visualMap={palmVisualMap}
           onAnimationFinished={() => {
             setIsPalmAnalyzing(false);
             setIsPalmScanReady(false);
-            setPalmScanImageUrl("");
+            clearPalmScanImageSource();
             setPalmScanStatus(PALM_MAPPING_STATUS);
           }}
         />
