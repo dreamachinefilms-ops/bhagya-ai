@@ -476,6 +476,9 @@ export default function Home() {
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const activeChatHasPalmImage = chatHasPalmImage(activeChat);
   const activeChatHasTarotReading = chatHasTarotReading(activeChat);
+  const isTarotFlowActive =
+    selectedService === "tarot" &&
+    (!activeChatHasTarotReading || tarotStatus !== "idle");
   const hasStarted = Boolean(activeChatId);
   const isPreparingBirthProfile = isLoggedIn && isCheckingBirthProfile;
   const showMobileLanding =
@@ -2561,12 +2564,39 @@ export default function Home() {
               }}
             >
               <div
-                className="mx-auto max-w-2xl space-y-4 px-[14px] py-4 sm:space-y-5 sm:px-4 sm:py-6"
+                className={`mx-auto w-full max-w-2xl px-[14px] sm:px-4 ${
+                  isTarotFlowActive
+                    ? "flex min-h-full items-center justify-center py-8 sm:py-10"
+                    : "space-y-4 py-4 sm:space-y-5 sm:py-6"
+                }`}
                 style={{
                   animation: "slideUp 0.4s cubic-bezier(0.16,1,0.3,1)",
                 }}
               >
-                {activeChat?.messages.map((message, idx) => (
+                {isTarotFlowActive ? (
+                  <TarotExperience
+                    compact
+                    status={tarotStatus}
+                    question={tarotQuestion}
+                    setQuestion={setTarotQuestion}
+                    spreadType={tarotSpreadType}
+                    setSpreadType={setTarotSpreadType}
+                    session={tarotSession}
+                    selectedIndexes={tarotSelectedIndexes}
+                    error={tarotError}
+                    isLoading={isLoading}
+                    onStart={handleTarotStart}
+                    onToggleCard={handleTarotCardToggle}
+                    onReveal={handleTarotReveal}
+                    onReset={() => {
+                      resetTarotFlow();
+                      setTarotStatus("asking");
+                    }}
+                  />
+                ) : null}
+
+                {!isTarotFlowActive &&
+                  activeChat?.messages.map((message, idx) => (
                   <div
                     key={message.id}
                     className={`flex gap-3 ${
@@ -2649,7 +2679,9 @@ export default function Home() {
                   </div>
                 ))}
 
-                {palmAnalysisError && selectedService === "palmistry" && (
+                {!isTarotFlowActive &&
+                  palmAnalysisError &&
+                  selectedService === "palmistry" && (
                   <PalmAnalysisErrorCard
                     message={palmAnalysisError.message}
                     onRetry={() => handlePalmAnalyze(palmAnalysisError.image)}
@@ -2699,27 +2731,8 @@ export default function Home() {
                     isAnalyzing={isPalmAnalyzing}
                     disabled={isLoading || isCheckingAuth}
                   />
-                ) : selectedService === "tarot" &&
-                  (!activeChatHasTarotReading || tarotStatus !== "idle") ? (
-                  <TarotExperience
-                    compact
-                    status={tarotStatus}
-                    question={tarotQuestion}
-                    setQuestion={setTarotQuestion}
-                    spreadType={tarotSpreadType}
-                    setSpreadType={setTarotSpreadType}
-                    session={tarotSession}
-                    selectedIndexes={tarotSelectedIndexes}
-                    error={tarotError}
-                    isLoading={isLoading}
-                    onStart={handleTarotStart}
-                    onToggleCard={handleTarotCardToggle}
-                    onReveal={handleTarotReveal}
-                    onReset={() => {
-                      resetTarotFlow();
-                      setTarotStatus("asking");
-                    }}
-                  />
+                ) : isTarotFlowActive ? (
+                  null
                 ) : (
                   <ChatInput
                     question={question}
