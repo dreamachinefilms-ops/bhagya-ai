@@ -2983,23 +2983,23 @@ function TarotMandalaIcon() {
     <svg
       viewBox="0 0 120 120"
       aria-hidden="true"
-      className="h-[52%] w-[52%] drop-shadow-[0_0_18px_rgba(125,211,252,0.38)]"
+      className="h-[52%] w-[52%] drop-shadow-[0_0_18px_rgba(245,158,11,0.28)]"
       fill="none"
     >
-      <circle cx="60" cy="60" r="39" stroke="rgba(186,230,253,0.42)" strokeWidth="1.2" />
-      <circle cx="60" cy="60" r="25" stroke="rgba(250,204,21,0.26)" strokeWidth="1" />
-      <circle cx="60" cy="60" r="7" fill="rgba(125,211,252,0.22)" stroke="rgba(224,242,254,0.7)" />
+      <circle cx="60" cy="60" r="39" stroke="rgba(251,191,36,0.44)" strokeWidth="1.2" />
+      <circle cx="60" cy="60" r="25" stroke="rgba(224,242,254,0.24)" strokeWidth="1" />
+      <circle cx="60" cy="60" r="7" fill="rgba(251,191,36,0.2)" stroke="rgba(254,243,199,0.72)" />
       {Array.from({ length: 12 }).map((_, index) => (
         <g key={index} transform={`rotate(${index * 30} 60 60)`}>
           <path
             d="M60 21 C66 36 66 44 60 54 C54 44 54 36 60 21Z"
-            stroke="rgba(186,230,253,0.58)"
+            stroke="rgba(252,211,77,0.56)"
             strokeWidth="1"
-            fill="rgba(56,189,248,0.075)"
+            fill="rgba(245,158,11,0.08)"
           />
           <path
             d="M60 33 C64 43 64 50 60 57 C56 50 56 43 60 33Z"
-            stroke="rgba(250,204,21,0.22)"
+            stroke="rgba(186,230,253,0.22)"
             strokeWidth="0.8"
           />
         </g>
@@ -3008,13 +3008,13 @@ function TarotMandalaIcon() {
         <g key={`ray-${index}`} transform={`rotate(${index * 45} 60 60)`}>
           <path
             d="M60 13 L62.5 25 L60 31 L57.5 25 Z"
-            fill="rgba(125,211,252,0.16)"
-            stroke="rgba(224,242,254,0.34)"
+            fill="rgba(251,191,36,0.14)"
+            stroke="rgba(254,243,199,0.32)"
             strokeWidth="0.8"
           />
         </g>
       ))}
-      <circle cx="60" cy="60" r="48" stroke="rgba(125,211,252,0.16)" strokeDasharray="2 8" />
+      <circle cx="60" cy="60" r="48" stroke="rgba(251,191,36,0.16)" strokeDasharray="2 8" />
     </svg>
   );
 }
@@ -3022,42 +3022,379 @@ function TarotMandalaIcon() {
 function TarotCardBack({
   selected,
   selectionNumber,
+  compact = false,
 }: {
   selected: boolean;
   selectionNumber?: number;
+  compact?: boolean;
 }) {
   return (
     <span
-      className={`relative block h-full w-full overflow-hidden rounded-[15px] transition duration-300 ${
+      className={`relative block h-full w-full overflow-hidden rounded-[14px] transition duration-300 motion-reduce:transform-none ${
         selected
           ? "-translate-y-1 scale-[1.035]"
           : "group-hover:-translate-y-1 group-hover:scale-[1.018]"
       }`}
       style={{
         background:
-          "radial-gradient(circle at 50% 30%, rgba(56,189,248,0.32), transparent 30%), radial-gradient(circle at 50% 82%, rgba(250,204,21,0.12), transparent 32%), linear-gradient(155deg, #111a3a 0%, #061225 54%, #020817 100%)",
+          "radial-gradient(circle at 50% 30%, rgba(245,158,11,0.22), transparent 31%), radial-gradient(circle at 50% 82%, rgba(79,70,229,0.22), transparent 36%), linear-gradient(155deg, #12101f 0%, #070b1c 56%, #02040d 100%)",
         boxShadow: selected
-          ? "inset 0 1px 0 rgba(255,255,255,0.16), inset 0 0 34px rgba(56,189,248,0.18), 0 18px 48px rgba(56,189,248,0.24)"
-          : "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 28px rgba(56,189,248,0.1), 0 12px 30px rgba(2,8,23,0.38)",
+          ? "inset 0 1px 0 rgba(255,255,255,0.16), inset 0 0 34px rgba(245,158,11,0.18), 0 18px 48px rgba(245,158,11,0.2)"
+          : "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 28px rgba(245,158,11,0.08), 0 12px 30px rgba(2,8,23,0.4)",
       }}
     >
-      <span className="absolute inset-[7px] rounded-[12px] border border-sky-200/18" />
-      <span className="absolute inset-[13px] rounded-[9px] border border-yellow-200/[0.12]" />
-      <span className="absolute left-1/2 top-3 h-1 w-10 -translate-x-1/2 rounded-full bg-sky-200/35" />
-      <span className="absolute bottom-3 left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-sky-200/35" />
-      <span className="absolute inset-0 bg-[linear-gradient(115deg,transparent_18%,rgba(255,255,255,0.08)_43%,transparent_62%)] opacity-55 transition group-hover:opacity-80" />
+      <span className="absolute inset-[6px] rounded-[11px] border border-amber-200/24" />
+      <span className="absolute inset-[12px] rounded-[8px] border border-white/[0.08]" />
+      <span className="absolute left-1/2 top-3 h-px w-10 -translate-x-1/2 rounded-full bg-amber-200/45" />
+      <span className="absolute bottom-3 left-1/2 h-px w-10 -translate-x-1/2 rounded-full bg-amber-200/45" />
+      <span className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(255,255,255,0.09),transparent_20%),linear-gradient(115deg,transparent_18%,rgba(255,255,255,0.075)_43%,transparent_62%)] opacity-60 transition group-hover:opacity-85" />
+      <span className="absolute inset-0 opacity-[0.08] [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.75)_1px,transparent_0)] [background-size:10px_10px]" />
       <span className="absolute inset-0 flex items-center justify-center">
         <TarotMandalaIcon />
       </span>
-      <span className="absolute inset-x-0 bottom-[17%] text-center text-[9px] font-semibold uppercase tracking-[0.22em] text-sky-100/42 sm:text-[10px]">
+      {!compact && (
+        <span className="absolute inset-x-0 bottom-[17%] text-center text-[9px] font-semibold uppercase tracking-[0.22em] text-amber-100/42 sm:text-[10px]">
         Bhagya
-      </span>
+        </span>
+      )}
       {selected && (
-        <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-sky-200/50 bg-sky-300/20 text-[11px] font-semibold text-white shadow-[0_0_18px_rgba(56,189,248,0.35)]">
+        <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-amber-100/60 bg-amber-300/20 text-[11px] font-semibold text-amber-50 shadow-[0_0_18px_rgba(245,158,11,0.34)]">
           {selectionNumber}
         </span>
       )}
     </span>
+  );
+}
+
+function TarotSparkleIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9L12 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function TarotHeader({
+  isSelecting,
+  activeSession,
+  status,
+  isLoading,
+  onReset,
+}: {
+  isSelecting: boolean;
+  activeSession: TarotSessionState | null;
+  status: TarotFlowStatus;
+  isLoading: boolean;
+  onReset: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-amber-200/70">
+          Bhagya Tarot
+        </p>
+        <h2 className="mt-2 text-[24px] font-semibold leading-[1.15] text-white sm:text-[30px]">
+          {isSelecting ? "Choose your cards" : "What would you like the cards to reveal?"}
+        </h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">
+          {isSelecting
+            ? activeSession?.spreadType === "one-card"
+              ? "Choose the card that draws you in."
+              : "Choose three cards for your reading. Let your intuition move first."
+            : "Set your intention and let intuition guide your selection."}
+        </p>
+      </div>
+
+      {(activeSession || status !== "idle") && (
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={isLoading}
+          className="inline-flex min-h-10 flex-shrink-0 items-center gap-2 rounded-full border border-amber-100/14 bg-white/[0.035] px-3 text-xs font-medium text-white/58 transition hover:border-amber-200/35 hover:bg-amber-300/8 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span className="text-amber-200/70">↺</span>
+          Reset
+        </button>
+      )}
+    </div>
+  );
+}
+
+function IntentionInput({
+  question,
+  setQuestion,
+}: {
+  question: string;
+  setQuestion: (value: string) => void;
+}) {
+  const suggestions = [
+    "Love",
+    "Career",
+    "Money",
+    "Personal growth",
+    "A decision",
+    "General guidance",
+  ];
+
+  function chooseSuggestion(topic: string) {
+    const clean = question.trim();
+    const next = `I want guidance about ${topic.toLowerCase()}.`;
+
+    if (!clean || /^I want guidance about .+\.$/i.test(clean)) {
+      setQuestion(next);
+      return;
+    }
+
+    if (clean.toLowerCase().includes(topic.toLowerCase())) return;
+    setQuestion(`${clean}\nFocus: ${topic}.`);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <div className="pointer-events-none absolute left-4 top-4 text-amber-200/45">
+          <TarotSparkleIcon />
+        </div>
+        <textarea
+          value={question}
+          onChange={(event) => setQuestion(event.target.value)}
+          placeholder="Ask about love, work, money, a decision, or what lies ahead..."
+          rows={3}
+          className="min-h-[132px] w-full resize-none rounded-[22px] border border-amber-100/14 bg-black/24 px-12 py-4 text-[15px] leading-7 text-white outline-none shadow-[inset_0_0_38px_rgba(245,158,11,0.045)] transition placeholder:text-white/30 focus:border-amber-200/45 focus:shadow-[inset_0_0_42px_rgba(245,158,11,0.08),0_0_0_1px_rgba(245,158,11,0.16)]"
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {suggestions.map((topic) => {
+          const active = question.toLowerCase().includes(topic.toLowerCase());
+
+          return (
+            <button
+              key={topic}
+              type="button"
+              onClick={() => chooseSuggestion(topic)}
+              className={`min-h-10 rounded-full border px-3.5 text-xs font-medium transition ${
+                active
+                  ? "border-amber-200/55 bg-amber-300/10 text-amber-100 shadow-[0_0_24px_rgba(245,158,11,0.12)]"
+                  : "border-white/10 bg-white/[0.035] text-white/58 hover:border-amber-200/35 hover:text-amber-100"
+              }`}
+            >
+              {topic}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SpreadSelector({
+  spreadType,
+  setSpreadType,
+}: {
+  spreadType: TarotSpreadType;
+  setSpreadType: (value: TarotSpreadType) => void;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {(["one-card", "three-card"] as const).map((spread) => {
+        const selected = spreadType === spread;
+
+        return (
+          <button
+            key={spread}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => setSpreadType(spread)}
+            className={`group relative min-h-[132px] overflow-hidden rounded-[22px] border p-4 text-left transition duration-200 ${
+              selected
+                ? "border-amber-200/55 bg-amber-300/10 text-white shadow-[0_18px_48px_rgba(245,158,11,0.13)]"
+                : "border-white/[0.09] bg-white/[0.035] text-white/70 hover:border-amber-200/30 hover:bg-white/[0.055]"
+            }`}
+          >
+            <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(245,158,11,0.14),transparent_34%)] opacity-75" />
+            <span className="relative flex items-start justify-between gap-3">
+              <span>
+                <span className="mb-3 flex h-10 items-center">
+                  {spread === "one-card" ? <SingleCardMark /> : <ThreeCardMark />}
+                </span>
+                <span className="block text-base font-semibold">
+                  {spread === "one-card" ? "One Card" : "Three Cards"}
+                </span>
+                <span className="mt-1 block text-sm leading-5 text-white/50">
+                  {spread === "one-card"
+                    ? "A clear message for the present moment"
+                    : "Past · Present · Direction"}
+                </span>
+                <span className="mt-3 inline-flex rounded-full border border-amber-100/12 bg-black/18 px-2.5 py-1 text-[11px] font-medium text-amber-100/64">
+                  {spread === "one-card" ? "Quick guidance" : "Deeper reading"}
+                </span>
+              </span>
+              {selected && (
+                <span className="flex h-6 w-6 items-center justify-center rounded-full border border-amber-100/60 bg-amber-300/20 text-xs text-amber-50">
+                  ✓
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SingleCardMark() {
+  return (
+    <span className="block h-9 w-6 rounded-md border border-amber-200/45 bg-gradient-to-b from-amber-200/14 to-indigo-950 shadow-[0_10px_24px_rgba(245,158,11,0.14)]" />
+  );
+}
+
+function ThreeCardMark() {
+  return (
+    <span className="relative block h-10 w-14">
+      <span className="absolute left-0 top-2 h-8 w-5 -rotate-12 rounded-md border border-amber-200/35 bg-indigo-950" />
+      <span className="absolute left-4 top-0 h-9 w-6 rounded-md border border-amber-200/50 bg-gradient-to-b from-amber-200/14 to-indigo-950 shadow-[0_10px_24px_rgba(245,158,11,0.14)]" />
+      <span className="absolute right-0 top-2 h-8 w-5 rotate-12 rounded-md border border-amber-200/35 bg-indigo-950" />
+    </span>
+  );
+}
+
+function ReadingSlots({
+  activeSession,
+  selectedIndexes,
+}: {
+  activeSession: TarotSessionState;
+  selectedIndexes: number[];
+}) {
+  const labels =
+    activeSession.spreadType === "one-card"
+      ? ["Your Message"]
+      : activeSession.spreadPositions.slice(0, activeSession.selectionCount);
+
+  return (
+    <div className={`grid gap-3 ${labels.length === 1 ? "mx-auto max-w-[180px]" : "sm:grid-cols-3"}`}>
+      {labels.map((label, index) => {
+        const assigned = selectedIndexes[index] !== undefined;
+
+        return (
+          <div
+            key={`${label}-${index}`}
+            className={`rounded-[18px] border p-3 text-center transition ${
+              assigned
+                ? "border-amber-200/42 bg-amber-300/[0.07] shadow-[0_14px_36px_rgba(245,158,11,0.12)]"
+                : "border-white/[0.08] bg-black/14"
+            }`}
+          >
+            <div className="mx-auto aspect-[2/3] w-14 rounded-[14px] border border-dashed border-amber-100/18 p-[2px] sm:w-16">
+              {assigned ? (
+                <TarotCardBack selected compact selectionNumber={index + 1} />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center rounded-[12px] bg-white/[0.025] text-amber-100/22">
+                  <TarotSparkleIcon className="h-4 w-4" />
+                </div>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-100/66">
+              {label}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TarotDeck({
+  activeSession,
+  selectedIndexes,
+  isLoading,
+  onToggleCard,
+}: {
+  activeSession: TarotSessionState;
+  selectedIndexes: number[];
+  isLoading: boolean;
+  onToggleCard: (index: number) => void;
+}) {
+  return (
+    <div className="-mx-4 overflow-x-auto px-4 pb-3 pt-2 sm:mx-0 sm:overflow-visible sm:px-0">
+      <div className="flex min-w-max items-end justify-center pb-2 sm:min-w-0">
+        {activeSession.availablePositions.map((cardIndex, visualIndex) => {
+          const selected = selectedIndexes.includes(cardIndex);
+          const center = (activeSession.availablePositions.length - 1) / 2;
+          const offset = visualIndex - center;
+          const angle = offset * 3.2;
+          const lift = Math.abs(offset) * 2;
+
+          return (
+            <button
+              key={cardIndex}
+              type="button"
+              aria-pressed={selected}
+              aria-label={`Select tarot card ${visualIndex + 1}`}
+              onClick={() => onToggleCard(cardIndex)}
+              disabled={isLoading}
+              className={`group relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 rounded-[17px] border p-[1px] transition duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
+                selected
+                  ? "z-20 border-amber-100/75 bg-amber-300/15 opacity-80 shadow-[0_18px_48px_rgba(245,158,11,0.22)]"
+                  : "z-10 border-white/[0.09] bg-white/[0.035] hover:z-30 hover:border-amber-100/45 hover:shadow-[0_18px_46px_rgba(245,158,11,0.16)]"
+              } disabled:cursor-not-allowed`}
+              style={{
+                transform: selected
+                  ? `translateY(-18px) rotate(${angle * 0.35}deg)`
+                  : `translateY(${lift}px) rotate(${angle}deg)`,
+              }}
+            >
+              <TarotCardBack
+                selected={selected}
+                selectionNumber={selectedIndexes.indexOf(cardIndex) + 1}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RevealActionBar({
+  selectedCount,
+  requiredCount,
+  canReveal,
+  isRevealing,
+  isLoading,
+  onReveal,
+}: {
+  selectedCount: number;
+  requiredCount: number;
+  canReveal: boolean;
+  isRevealing: boolean;
+  isLoading: boolean;
+  onReveal: () => void;
+}) {
+  return (
+    <div className="sticky bottom-0 mt-5 rounded-[20px] border border-amber-100/12 bg-[#050817]/88 p-3 shadow-[0_-14px_44px_rgba(2,8,23,0.44)] backdrop-blur-xl">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-white/58">
+          <span className="font-semibold text-amber-100/80">{selectedCount}</span> of {requiredCount} cards selected
+        </p>
+        <button
+          type="button"
+          onClick={onReveal}
+          disabled={!canReveal || isLoading}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#312313] via-[#8a5a18] to-[#f59e0b] px-5 text-sm font-semibold text-white shadow-[0_16px_42px_rgba(245,158,11,0.2)] transition hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none"
+        >
+          <TarotSparkleIcon className="h-4 w-4" />
+          {isRevealing ? (
+            <LoadingDots />
+          ) : canReveal ? (
+            "Reveal My Reading"
+          ) : (
+            `Select ${requiredCount} Cards`
+          )}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -3092,14 +3429,6 @@ function TarotExperience({
   onReveal: () => void;
   onReset: () => void;
 }) {
-  const topicSuggestions = [
-    "Love",
-    "Career",
-    "Money",
-    "Personal growth",
-    "A decision",
-    "General guidance",
-  ];
   const activeSession =
     status === "selecting" || status === "revealing" ? session : null;
   const isSelecting = Boolean(activeSession);
@@ -3111,145 +3440,101 @@ function TarotExperience({
 
   return (
     <div
-      className={`mx-auto w-full rounded-[24px] border border-sky-200/15 bg-white/[0.055] p-4 text-left shadow-[0_24px_90px_rgba(14,165,233,0.2)] backdrop-blur-2xl ${
-        compact ? "max-w-2xl" : "max-w-xl"
+      className={`relative mx-auto w-full overflow-hidden rounded-[28px] border border-amber-100/16 p-4 text-left shadow-[0_28px_110px_rgba(2,8,23,0.62)] backdrop-blur-2xl sm:p-5 ${
+        compact ? "max-w-[980px]" : "max-w-[900px]"
       }`}
       style={{
         background:
-          "linear-gradient(145deg, rgba(255,255,255,0.07), rgba(56,189,248,0.035)), rgba(2,8,23,0.78)",
+          "radial-gradient(circle at 50% -20%, rgba(245,158,11,0.13), transparent 34%), radial-gradient(circle at 85% 18%, rgba(79,70,229,0.14), transparent 30%), linear-gradient(145deg, rgba(255,255,255,0.07), rgba(245,158,11,0.035)), rgba(2,8,23,0.84)",
       }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-200/65">
-            Tarot
-          </p>
-          <h2 className="mt-1 text-xl font-semibold leading-7 text-white">
-            {isSelecting ? "Choose your cards" : "Ask the cards"}
-          </h2>
-          <p className="mt-1 text-sm leading-5 text-white/50">
-            {isSelecting
-              ? `${activeSession?.spreadName} - select ${activeSession?.selectionCount} card(s).`
-              : "Set an intention, then choose a one-card or three-card spread."}
-          </p>
-        </div>
+      <div className="pointer-events-none absolute inset-0 opacity-50 [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.55)_1px,transparent_0)] [background-size:22px_22px]" />
+      <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full border border-amber-100/10" />
+      <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full border border-indigo-200/10" />
 
-        {(session || status !== "idle") && (
-          <button
-            type="button"
-            onClick={onReset}
-            disabled={isLoading}
-            className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-white/60 transition hover:border-sky-300/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Reset
-          </button>
-        )}
-      </div>
+      <div className="relative">
+        <TarotHeader
+          isSelecting={isSelecting}
+          activeSession={activeSession}
+          status={status}
+          isLoading={isLoading}
+          onReset={onReset}
+        />
 
       {!isSelecting ? (
-        <div className="mt-4 space-y-4">
-          <textarea
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            placeholder="What would you like guidance on?"
-            rows={compact ? 2 : 3}
-            className="w-full resize-none rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/32 focus:border-sky-300/40"
-          />
-
-          <div className="flex flex-wrap gap-2">
-            {topicSuggestions.map((topic) => (
-              <button
-                key={topic}
-                type="button"
-                onClick={() => setQuestion(`I want guidance about ${topic.toLowerCase()}.`)}
-                className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-white/58 transition hover:border-sky-300/35 hover:text-white"
-              >
-                {topic}
-              </button>
-            ))}
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-5">
+            <IntentionInput question={question} setQuestion={setQuestion} />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {(["one-card", "three-card"] as const).map((spread) => (
-              <button
-                key={spread}
-                type="button"
-                onClick={() => setSpreadType(spread)}
-                className={`rounded-2xl border px-4 py-3 text-left transition ${
-                  spreadType === spread
-                    ? "border-sky-300/45 bg-sky-400/10 text-white shadow-[0_12px_34px_rgba(56,189,248,0.12)]"
-                    : "border-white/[0.08] bg-white/[0.03] text-white/58 hover:border-white/18 hover:text-white"
-                }`}
-              >
-                <span className="block text-sm font-semibold">
-                  {spread === "one-card" ? "One Card" : "Three Cards"}
-                </span>
-                <span className="mt-1 block text-xs leading-5 text-white/45">
-                  {spread === "one-card"
-                    ? "Quick guidance"
-                    : "Past, present, direction"}
-                </span>
-              </button>
-            ))}
-          </div>
+          <div className="space-y-5">
+            <SpreadSelector
+              spreadType={spreadType}
+              setSpreadType={setSpreadType}
+            />
 
           <button
             type="button"
             onClick={onStart}
-            disabled={isLoading}
-            className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-gradient-to-r from-sky-400 to-blue-700 px-5 text-sm font-semibold text-white shadow-[0_16px_42px_rgba(56,189,248,0.24)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isLoading || !question.trim()}
+            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#21182a] via-[#7a4d17] to-[#d97706] px-5 text-sm font-semibold text-white shadow-[0_18px_48px_rgba(245,158,11,0.2)] transition hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none"
           >
-            {isShuffling ? <LoadingDots /> : "Shuffle Cards"}
+            {isShuffling ? (
+              <LoadingDots />
+            ) : (
+              <>
+                <TarotSparkleIcon className="h-4 w-4" />
+                Prepare My Reading
+              </>
+            )}
           </button>
+          </div>
         </div>
       ) : (
-        <div className="mt-4">
-          <div className="grid grid-cols-5 gap-2 sm:grid-cols-5">
-            {activeSession?.availablePositions.map((cardIndex, visualIndex) => {
-              const selected = selectedIndexes.includes(cardIndex);
-              const angle =
-                (visualIndex -
-                  (activeSession.availablePositions.length - 1) / 2) *
-                2.4;
+        <div className="mt-6 space-y-5">
+          {activeSession && (
+            <>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-100/56">
+                    {activeSession.spreadName}
+                  </p>
+                  <p className="mt-1 text-sm text-white/52">
+                    {activeSession.spreadType === "one-card"
+                      ? "Choose the card that draws you in."
+                      : "Choose cards in order for each reading slot."}
+                  </p>
+                </div>
+                <p className="text-sm text-white/58">
+                  <span className="font-semibold text-amber-100/80">
+                    {selectedIndexes.length}
+                  </span>{" "}
+                  of {activeSession.selectionCount} cards selected
+                </p>
+              </div>
 
-              return (
-                <button
-                  key={cardIndex}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => onToggleCard(cardIndex)}
-                  disabled={isLoading}
-                  className={`group aspect-[2/3] rounded-[18px] border p-[1px] transition duration-300 ${
-                    selected
-                      ? "border-sky-200/75 bg-sky-300/15 shadow-[0_18px_52px_rgba(56,189,248,0.32)]"
-                      : "border-white/[0.09] bg-white/[0.035] shadow-[0_10px_28px_rgba(0,0,0,0.26)] hover:border-sky-200/38 hover:bg-sky-300/8 hover:shadow-[0_16px_42px_rgba(56,189,248,0.18)]"
-                  } disabled:cursor-not-allowed`}
-                  style={{
-                    transform: `rotate(${angle}deg)`,
-                  }}
-                >
-                  <TarotCardBack
-                    selected={selected}
-                    selectionNumber={selectedIndexes.indexOf(cardIndex) + 1}
-                  />
-                </button>
-              );
-            })}
-          </div>
+              <ReadingSlots
+                activeSession={activeSession}
+                selectedIndexes={selectedIndexes}
+              />
 
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-white/52">
-              {selectedIndexes.length} of {activeSession?.selectionCount} selected
-            </p>
-            <button
-              type="button"
-              onClick={onReveal}
-              disabled={!canReveal || isLoading}
-              className="flex min-h-11 items-center justify-center rounded-2xl bg-gradient-to-r from-sky-400 to-blue-700 px-5 text-sm font-semibold text-white shadow-[0_16px_42px_rgba(56,189,248,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isRevealing ? <LoadingDots /> : "Reveal Reading"}
-            </button>
-          </div>
+              <TarotDeck
+                activeSession={activeSession}
+                selectedIndexes={selectedIndexes}
+                isLoading={isLoading}
+                onToggleCard={onToggleCard}
+              />
+
+              <RevealActionBar
+                selectedCount={selectedIndexes.length}
+                requiredCount={activeSession.selectionCount}
+                canReveal={canReveal}
+                isRevealing={isRevealing}
+                isLoading={isLoading}
+                onReveal={onReveal}
+              />
+            </>
+          )}
         </div>
       )}
 
@@ -3258,6 +3543,7 @@ function TarotExperience({
           {error}
         </p>
       )}
+      </div>
     </div>
   );
 }
