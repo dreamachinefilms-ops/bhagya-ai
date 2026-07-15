@@ -14,6 +14,8 @@ import { isUuid, validateAiRequestBody } from "@/lib/backend/validation";
 import {
   buildPalmistryPrompt,
   hasPalmEvidence,
+  sanitizePalmAnalysisContext,
+  type PalmAnalysisContext,
 } from "@/lib/palmistry/palmistryPrompt";
 import { buildPalmImageMissingResponse } from "@/lib/guidanceResponses";
 
@@ -102,6 +104,7 @@ function parsePalmReadingJson(text: string) {
             ? parsed.qualityReason
             : "",
         reading: typeof parsed.reading === "string" ? parsed.reading : "",
+        context: sanitizePalmAnalysisContext(parsed.context),
       };
     }
   } catch {
@@ -109,6 +112,7 @@ function parsePalmReadingJson(text: string) {
       usable: true,
       qualityReason: "",
       reading: text,
+      context: undefined,
     };
   }
 
@@ -116,6 +120,7 @@ function parsePalmReadingJson(text: string) {
     usable: true,
     qualityReason: "",
     reading: text,
+    context: undefined,
   };
 }
 
@@ -142,12 +147,14 @@ function buildImageMessageContent({
   fileName,
   mimeType,
   size,
+  palmContext,
 }: {
   storagePath: string;
   signedUrl?: string;
   fileName: string;
   mimeType: string;
   size: number;
+  palmContext?: PalmAnalysisContext;
 }) {
   const basePayload = {
     type: "bhagya.image",
@@ -158,6 +165,7 @@ function buildImageMessageContent({
     imageName: fileName,
     imageMimeType: mimeType,
     imageSize: size,
+    palmContext,
   };
 
   return {
@@ -167,6 +175,32 @@ function buildImageMessageContent({
       imageUrl: signedUrl,
     }),
   };
+}
+
+function extractPalmContextFromMessages(messages: unknown) {
+  if (!Array.isArray(messages)) return undefined;
+
+  for (const message of [...messages].reverse()) {
+    if (!isRecord(message) || typeof message.content !== "string") continue;
+
+    try {
+      const payload: unknown = JSON.parse(message.content);
+
+      if (
+        isRecord(payload) &&
+        payload.type === "bhagya.image" &&
+        payload.mode === "palmistry"
+      ) {
+        const context = sanitizePalmAnalysisContext(payload.palmContext);
+
+        if (context) return context;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return undefined;
 }
 
 function validatePalmImageBody(body: unknown) {
@@ -392,6 +426,7 @@ async function handleImageAnalysisFromStorage({
         languageCode,
         conversationText,
         firstName: profile?.firstName || undefined,
+        currentQuestion: question,
         wantsJson: true,
       }),
       input: conversationText,
@@ -414,6 +449,7 @@ async function handleImageAnalysisFromStorage({
       fileName,
       mimeType,
       size: fileSize,
+      palmContext: parsedAnswer.context,
     });
     const answer = parsedAnswer.reading || rawAnswer;
 
@@ -485,6 +521,7 @@ async function handleTextPalmistry({
 
   const conversationText = buildConversationText(messages, question);
   const rawBody = isRecord(body) ? body : {};
+  const palmContext = extractPalmContextFromMessages(rawBody.messages);
 
   if (!hasPalmEvidence(rawBody, conversationText)) {
     const answer = buildPalmImageMissingResponse(languageCode);
@@ -509,6 +546,8 @@ async function handleTextPalmistry({
       languageCode,
       conversationText,
       firstName: profile?.firstName || undefined,
+      currentQuestion: question,
+      palmContext,
     }),
     input: conversationText,
   });
