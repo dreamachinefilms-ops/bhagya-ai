@@ -34,11 +34,77 @@ const availableCardCounts: Record<TarotSpreadType, number> = {
 };
 
 function apiError(status: number, code: string, message: string) {
-  return NextResponse.json({ success: false, code, message }, { status });
+  return NextResponse.json(
+    { success: false, error: code, code, message },
+    { status }
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function devLog(event: string, details: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") return;
+  console.info(`[tarot] ${event}`, details);
+}
+
+function getSupabaseErrorInfo(error: unknown) {
+  if (!isRecord(error)) {
+    return {
+      code: undefined,
+      message: error instanceof Error ? error.message : String(error),
+      details: undefined,
+    };
+  }
+
+  return {
+    code: typeof error.code === "string" ? error.code : undefined,
+    message: typeof error.message === "string" ? error.message : undefined,
+    details: typeof error.details === "string" ? error.details : undefined,
+  };
+}
+
+function getTarotDatabaseErrorResponse(error: unknown) {
+  const info = getSupabaseErrorInfo(error);
+
+  if (info.code === "42P01") {
+    return apiError(
+      500,
+      "TAROT_TABLE_MISSING",
+      "The Tarot database tables are missing. Please run the Tarot Supabase migration."
+    );
+  }
+
+  if (info.code === "42703" || info.code === "PGRST204") {
+    return apiError(
+      500,
+      "TAROT_SCHEMA_MISMATCH",
+      "The Tarot database schema is out of date. Please run the latest Tarot migration."
+    );
+  }
+
+  if (info.code === "42501") {
+    return apiError(
+      403,
+      "TAROT_RLS_BLOCKED",
+      "The Tarot session could not be saved because database permissions are not configured."
+    );
+  }
+
+  if (info.code === "23503") {
+    return apiError(
+      400,
+      "CHAT_NOT_FOUND",
+      "The Tarot conversation could not be created."
+    );
+  }
+
+  return apiError(
+    500,
+    "DATABASE_ERROR",
+    "The cards could not be prepared. Please try again."
+  );
 }
 
 function sanitizeQuestion(value: unknown) {
@@ -162,8 +228,16 @@ async function handleStartSession({
       ? body.languageCode.trim().slice(0, 40)
       : "english";
 
+  devLog("start-session request", {
+    routeName,
+    authenticatedUserPresent: Boolean(userId),
+    chatIdPresent: Boolean(chatId),
+    spreadType,
+    questionLength: question.length,
+  });
+
   if (!isUuid(chatId)) {
-    return apiError(400, "INVALID_CHAT", "Chat not found.");
+    return apiError(400, "INVALID_CHAT", "The Tarot conversation could not be created.");
   }
 
   if (!question) {
@@ -175,10 +249,39 @@ async function handleStartSession({
   }
 
   const supabase = createSupabaseUserClient(request);
-  const chat = await findUserChat({ supabase, userId, chatId });
+  let chat: Awaited<ReturnType<typeof findUserChat>>;
+
+  try {
+    chat = await findUserChat({ supabase, userId, chatId });
+  } catch (error) {
+    const info = getSupabaseErrorInfo(error);
+    devLog("chat ownership check failed", {
+      routeName,
+      chatIdPresent: Boolean(chatId),
+      supabaseErrorCode: info.code,
+      supabaseErrorMessage: info.message,
+      httpStatus: 500,
+    });
+    throw error;
+  }
 
   if (!chat) {
-    return apiError(404, "CHAT_NOT_FOUND", "Chat not found.");
+    devLog("chat ownership check rejected", {
+      routeName,
+      chatIdPresent: Boolean(chatId),
+      httpStatus: 404,
+    });
+    return apiError(404, "CHAT_NOT_FOUND", "The Tarot conversation could not be created.");
+  }
+
+  if (chat.service !== "tarot") {
+    devLog("chat service mismatch", {
+      routeName,
+      chatIdPresent: Boolean(chatId),
+      chatService: chat.service,
+      httpStatus: 400,
+    });
+    return apiError(400, "INVALID_CHAT_SERVICE", "The Tarot conversation could not be created.");
   }
 
   const spread = getTarotSpread({ spreadType, question });
@@ -201,9 +304,33 @@ async function handleStartSession({
     .single();
 
   if (error) {
-    console.error("[tarot] session insert failed", { message: error.message });
-    return apiError(500, "DATABASE_ERROR", "The cards could not be prepared. Please try again.");
+    const info = getSupabaseErrorInfo(error);
+    devLog("session insert failed", {
+      routeName,
+      chatIdPresent: Boolean(chatId),
+      spreadType,
+      questionLength: question.length,
+      supabaseErrorCode: info.code,
+      supabaseErrorMessage: info.message,
+      httpStatus: info.code === "42501" ? 403 : 500,
+      tarotSessionInsertSucceeded: false,
+    });
+    console.error("[tarot] session insert failed", {
+      code: info.code,
+      message: info.message,
+      details: info.details,
+    });
+    return getTarotDatabaseErrorResponse(error);
   }
+
+  devLog("session insert succeeded", {
+    routeName,
+    chatIdPresent: Boolean(chatId),
+    spreadType,
+    questionLength: question.length,
+    httpStatus: 200,
+    tarotSessionInsertSucceeded: true,
+  });
 
   return NextResponse.json({
     success: true,
@@ -460,12 +587,10 @@ export async function POST(request: Request) {
   const { user, error: authError } = await requireUser(request);
 
   if (authError || !user) {
-    return NextResponse.json(
-      {
-        answer: "Your session has expired. Please sign in again.",
-        error: "UNAUTHORIZED",
-      },
-      { status: 401 }
+    return apiError(
+      401,
+      "AUTH_REQUIRED",
+      "Your session has expired. Please sign in again."
     );
   }
 

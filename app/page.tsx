@@ -899,6 +899,11 @@ export default function Home() {
       ? chats.find((chat) => chat.id === chatId) || null
       : null;
 
+    if (workingChat && workingChat.service !== "tarot") {
+      chatId = null;
+      workingChat = null;
+    }
+
     if (!chatId) {
       const newChat = await createServerChat({
         title: makeTitle(cleanQuestion),
