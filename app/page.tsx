@@ -3294,7 +3294,7 @@ function ReadingSlots({
             key={`${label}-${index}`}
             className={`rounded-[18px] border p-3 text-center transition ${
               assigned
-                ? "border-sky-300/42 bg-sky-300/[0.07] shadow-[0_14px_36px_rgba(34,199,242,0.12)]"
+                ? "border-purple-400/90 bg-[#07101f]/70 shadow-[0_0_0_1px_rgba(168,85,247,0.15),0_0_22px_rgba(139,92,246,0.22),inset_0_0_18px_rgba(168,85,247,0.06)]"
                 : "border-white/[0.08] bg-[#07101f]/70"
             }`}
           >
