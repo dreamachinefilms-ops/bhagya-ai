@@ -336,7 +336,10 @@ export default function Home() {
     useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottomRef = useRef(true);
+  const previousChatIdRef = useRef<string | null>(null);
   const palmVisualMapCacheRef = useRef<Record<string, PalmVisualMap>>({});
   const palmVisualMapRequestRef = useRef(0);
   const palmScanObjectUrlRef = useRef<string | null>(null);
@@ -540,8 +543,29 @@ export default function Home() {
   }, [getAuthHeaders, isCheckingAuth, isLoggedIn, router]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeChat?.messages]);
+    const scroller = messagesScrollRef.current;
+
+    if (!scroller) return;
+
+    const isNewChat = previousChatIdRef.current !== activeChatId;
+
+    previousChatIdRef.current = activeChatId;
+
+    if (isNewChat) {
+      shouldStickToBottomRef.current = true;
+    }
+
+    if (!shouldStickToBottomRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scroller.scrollTo({
+        top: scroller.scrollHeight,
+        behavior: isNewChat ? "auto" : "smooth",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeChatId, activeChat?.messages]);
 
   useEffect(() => {
     async function checkAuth() {
@@ -1880,7 +1904,7 @@ export default function Home() {
           CHAT SCREEN
       ══════════════════════════════════════════ */}
       {hasStarted && !isPreparingBirthProfile && (
-        <div className="relative z-10 flex min-h-[100svh]">
+        <div className="relative z-10 flex h-[100dvh] min-h-0 overflow-hidden">
           {/* ── Left icon rail ── */}
           <nav className="fixed left-0 top-0 z-30 hidden h-screen w-14 flex-col items-center border-r border-white/[0.07] bg-black/50 py-3 backdrop-blur-2xl sm:flex">
             {/* Logo mark */}
@@ -1967,7 +1991,7 @@ export default function Home() {
           </nav>
 
           {/* ── Main chat area ── */}
-          <section className="flex min-h-[100svh] w-full flex-col pl-0 sm:pl-14">
+          <section className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden pl-0 sm:pl-14">
             {/* Chat header */}
             <header className="fixed left-0 right-0 top-0 z-20 flex h-[calc(56px+env(safe-area-inset-top))] items-end justify-between border-b border-white/[0.07] bg-[#020817]/75 px-3 pb-2 pt-[env(safe-area-inset-top)] backdrop-blur-2xl sm:left-14 sm:h-14 sm:items-center sm:px-4 sm:py-0">
               <div className="flex min-w-0 items-center gap-2 sm:gap-3">
@@ -2061,7 +2085,20 @@ export default function Home() {
             </header>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto pb-[190px] pt-[calc(56px+env(safe-area-inset-top))] sm:pb-44 sm:pt-14">
+            <div
+              ref={messagesScrollRef}
+              onScroll={(event) => {
+                const target = event.currentTarget;
+                const distanceFromBottom =
+                  target.scrollHeight - target.scrollTop - target.clientHeight;
+
+                shouldStickToBottomRef.current = distanceFromBottom < 96;
+              }}
+              className="min-h-0 flex-1 overscroll-contain overflow-y-auto pb-[190px] pt-[calc(56px+env(safe-area-inset-top))] sm:pb-44 sm:pt-14"
+              style={{
+                WebkitOverflowScrolling: "touch",
+              }}
+            >
               <div
                 className="mx-auto max-w-2xl space-y-4 px-[14px] py-4 sm:space-y-5 sm:px-4 sm:py-6"
                 style={{
