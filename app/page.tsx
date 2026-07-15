@@ -25,6 +25,11 @@ import {
 } from "@/lib/languages";
 import { supabase } from "@/lib/supabaseClient";
 import type { PalmVisualMap } from "@/lib/palmistry/visualMap";
+import type {
+  DrawnTarotCard,
+  TarotReadingSummary,
+  TarotSpreadType,
+} from "@/lib/tarot/reading";
 
 type ServiceType = "numerology" | "tarot" | "palmistry" | "astrology";
 
@@ -55,6 +60,28 @@ type ParsedMessageContent = {
   imageName?: string;
 };
 
+type TarotReadingMessagePayload = TarotReadingSummary & {
+  type: "bhagya.tarot";
+  service: "tarot";
+};
+
+type TarotSessionState = {
+  id: string;
+  spreadType: TarotSpreadType;
+  spreadName: string;
+  selectionCount: number;
+  availablePositions: number[];
+  spreadPositions: string[];
+};
+
+type TarotFlowStatus =
+  | "idle"
+  | "asking"
+  | "shuffling"
+  | "selecting"
+  | "revealing"
+  | "complete";
+
 type PalmAnalysisError = {
   code: string;
   message: string;
@@ -76,6 +103,7 @@ type BirthDetailsStatus = {
 
 const PENDING_QUESTION_KEY = "bhagya_pending_question_v1";
 const IMAGE_MESSAGE_TYPE = "bhagya.image";
+const TAROT_MESSAGE_TYPE = "bhagya.tarot";
 const PALM_UPLOAD_TEXT = "Palm photo uploaded for analysis.";
 const PALM_ANALYSIS_LOADING_TEXT = "Bhagya is studying the lines of your palm...";
 const PALM_ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -200,12 +228,61 @@ function parseMessageContent(content: string): ParsedMessageContent {
   return { text: content };
 }
 
+function isTarotReadingPayload(
+  value: unknown
+): value is TarotReadingMessagePayload {
+  return (
+    isRecord(value) &&
+    value.type === TAROT_MESSAGE_TYPE &&
+    value.service === "tarot" &&
+    typeof value.readingId === "string" &&
+    typeof value.question === "string" &&
+    (value.spreadType === "one-card" || value.spreadType === "three-card") &&
+    typeof value.spreadName === "string" &&
+    Array.isArray(value.cards) &&
+    value.cards.every(
+      (card) =>
+        isRecord(card) &&
+        typeof card.cardId === "string" &&
+        typeof card.name === "string" &&
+        typeof card.position === "string" &&
+        (card.orientation === "upright" || card.orientation === "reversed") &&
+        typeof card.shortMeaning === "string" &&
+        Array.isArray(card.keywords)
+    ) &&
+    typeof value.interpretation === "string"
+  );
+}
+
+function parseTarotReadingContent(
+  content: string
+): TarotReadingMessagePayload | null {
+  if (!content.trim().startsWith("{")) return null;
+
+  try {
+    const payload: unknown = JSON.parse(content);
+    return isTarotReadingPayload(payload) ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
 function chatHasPalmImage(chat: Chat | undefined) {
   return Boolean(
     chat?.messages.some(
       (message) =>
         message.service === "palmistry" &&
         Boolean(parseMessageContent(message.content).imageUrl)
+    )
+  );
+}
+
+function chatHasTarotReading(chat: Chat | undefined) {
+  return Boolean(
+    chat?.messages.some(
+      (message) =>
+        message.service === "tarot" &&
+        Boolean(parseTarotReadingContent(message.content))
     )
   );
 }
@@ -323,6 +400,17 @@ export default function Home() {
   const [palmVisualMap, setPalmVisualMap] = useState<PalmVisualMap | null>(null);
   const [palmAnalysisError, setPalmAnalysisError] =
     useState<PalmAnalysisError>(null);
+  const [tarotQuestion, setTarotQuestion] = useState("");
+  const [tarotSpreadType, setTarotSpreadType] =
+    useState<TarotSpreadType>("three-card");
+  const [tarotStatus, setTarotStatus] = useState<TarotFlowStatus>("idle");
+  const [tarotSession, setTarotSession] = useState<TarotSessionState | null>(
+    null
+  );
+  const [tarotSelectedIndexes, setTarotSelectedIndexes] = useState<number[]>(
+    []
+  );
+  const [tarotError, setTarotError] = useState("");
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -346,6 +434,7 @@ export default function Home() {
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const activeChatHasPalmImage = chatHasPalmImage(activeChat);
+  const activeChatHasTarotReading = chatHasTarotReading(activeChat);
   const hasStarted = Boolean(activeChatId);
   const isPreparingBirthProfile = isLoggedIn && isCheckingBirthProfile;
   const showMobileLanding =
@@ -615,6 +704,7 @@ export default function Home() {
     clearPalmScanImageSource();
     setIsPalmScanReady(false);
     setPalmVisualMap(null);
+    resetTarotFlow();
     setSelectedService("astrology");
     setIsLoading(false);
     setIsPalmAnalyzing(false);
@@ -632,6 +722,7 @@ export default function Home() {
     clearPalmScanImageSource();
     setIsPalmScanReady(false);
     setPalmVisualMap(null);
+    resetTarotFlow();
     setIsLoading(false);
     setIsPalmAnalyzing(false);
     setIsSidebarOpen(false);
@@ -660,6 +751,22 @@ export default function Home() {
 
   function clearPalmScanImageSource() {
     setPalmScanImageSource("");
+  }
+
+  function resetTarotFlow(nextQuestion = "") {
+    setTarotQuestion(nextQuestion);
+    setTarotSpreadType("three-card");
+    setTarotStatus("idle");
+    setTarotSession(null);
+    setTarotSelectedIndexes([]);
+    setTarotError("");
+  }
+
+  function handleServiceChange(service: ServiceType) {
+    setSelectedService(service);
+    if (service !== "tarot") {
+      resetTarotFlow();
+    }
   }
 
   function updateAssistantMessage(
@@ -760,6 +867,255 @@ export default function Home() {
       !Array.isArray(data.message)
       ? mapDbMessage(data.message as Record<string, unknown>, service)
       : null;
+  }
+
+  async function handleTarotStart() {
+    const cleanQuestion = tarotQuestion.trim() || "General tarot guidance";
+
+    if (isCheckingAuth || isLoading || tarotStatus === "shuffling") return;
+
+    if (!isLoggedIn) {
+      localStorage.setItem(PENDING_QUESTION_KEY, cleanQuestion);
+      router.push("/login?next=/");
+      return;
+    }
+
+    const headers = await getAuthHeaders();
+
+    if (!headers) {
+      localStorage.setItem(PENDING_QUESTION_KEY, cleanQuestion);
+      setIsLoggedIn(false);
+      router.push("/login?next=/");
+      return;
+    }
+
+    setSelectedService("tarot");
+    setTarotError("");
+    setTarotStatus("shuffling");
+    setIsLoading(true);
+
+    let chatId = activeChatId;
+    let workingChat = chatId
+      ? chats.find((chat) => chat.id === chatId) || null
+      : null;
+
+    if (!chatId) {
+      const newChat = await createServerChat({
+        title: makeTitle(cleanQuestion),
+        service: "tarot",
+        languageCode: selectedLanguage,
+      });
+
+      if (!newChat) {
+        setTarotError("Could not create a Tarot chat. Please try again.");
+        setTarotStatus("asking");
+        setIsLoading(false);
+        return;
+      }
+
+      chatId = newChat.id;
+      workingChat = newChat;
+      setActiveChatId(chatId);
+      setChats((prev) => [newChat, ...prev]);
+    }
+
+    if (!chatId || !workingChat) {
+      setTarotError("Could not prepare your Tarot reading. Please try again.");
+      setTarotStatus("asking");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/tarot", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          action: "start-session",
+          chatId,
+          question: cleanQuestion,
+          spreadType: tarotSpreadType,
+          language: selectedLanguageLabel,
+          languageCode: selectedLanguage,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          typeof data.message === "string"
+            ? data.message
+            : "The cards could not be shuffled. Please try again."
+        );
+      }
+
+      if (
+        typeof data.readingSessionId !== "string" ||
+        !Array.isArray(data.availablePositions) ||
+        !Array.isArray(data.spreadPositions)
+      ) {
+        throw new Error("Bhagya could not prepare the Tarot spread.");
+      }
+
+      setTarotQuestion(cleanQuestion);
+      setTarotSession({
+        id: data.readingSessionId,
+        spreadType: data.spreadType === "one-card" ? "one-card" : "three-card",
+        spreadName:
+          typeof data.spreadName === "string" ? data.spreadName : "Tarot Spread",
+        selectionCount:
+          typeof data.selectionCount === "number"
+            ? data.selectionCount
+            : tarotSpreadType === "one-card"
+              ? 1
+              : 3,
+        availablePositions: data.availablePositions.filter(
+          (index: unknown): index is number =>
+            typeof index === "number" && Number.isInteger(index)
+        ),
+        spreadPositions: data.spreadPositions.filter(
+          (position: unknown): position is string => typeof position === "string"
+        ),
+      });
+      setTarotSelectedIndexes([]);
+      setTarotStatus("selecting");
+    } catch (error) {
+      setTarotError(
+        error instanceof Error
+          ? error.message
+          : "The cards could not be shuffled. Please try again."
+      );
+      setTarotStatus("asking");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function handleTarotCardToggle(index: number) {
+    if (!tarotSession || tarotStatus !== "selecting") return;
+
+    setTarotSelectedIndexes((prev) => {
+      if (prev.includes(index)) {
+        return prev.filter((item) => item !== index);
+      }
+
+      if (prev.length >= tarotSession.selectionCount) return prev;
+      return [...prev, index];
+    });
+  }
+
+  async function handleTarotReveal() {
+    if (!tarotSession || isLoading || tarotStatus !== "selecting") return;
+
+    if (tarotSelectedIndexes.length !== tarotSession.selectionCount) {
+      setTarotError(`Choose ${tarotSession.selectionCount} card(s) first.`);
+      return;
+    }
+
+    const chatId = activeChatId;
+
+    if (!chatId) {
+      setTarotError("Could not find this Tarot chat. Please try again.");
+      return;
+    }
+
+    const headers = await getAuthHeaders();
+
+    if (!headers) {
+      setIsLoggedIn(false);
+      router.push("/login?next=/");
+      return;
+    }
+
+    setTarotError("");
+    setTarotStatus("revealing");
+    setIsLoading(true);
+
+    try {
+      const res = await fetch("/api/tarot", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          action: "reveal",
+          readingSessionId: tarotSession.id,
+          selectedIndexes: tarotSelectedIndexes,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          typeof data.message === "string"
+            ? data.message
+            : "Bhagya could not reveal these cards. Please try again."
+        );
+      }
+
+      const assistantContent =
+        typeof data.messageContent === "string"
+          ? data.messageContent
+          : JSON.stringify({
+              type: TAROT_MESSAGE_TYPE,
+              service: "tarot",
+              readingId: data.readingId || makeId(),
+              question: tarotQuestion,
+              spreadType: tarotSession.spreadType,
+              spreadName: tarotSession.spreadName,
+              cards: Array.isArray(data.cards) ? data.cards : [],
+              interpretation:
+                typeof data.reading === "string"
+                  ? data.reading
+                  : "Your Tarot reading is ready.",
+            });
+
+      const userMessage: Message = {
+        id: makeId(),
+        role: "user",
+        content: tarotQuestion,
+        service: "tarot",
+        languageCode: selectedLanguage,
+      };
+      const assistantMessage: Message = {
+        id: makeId(),
+        role: "assistant",
+        content: assistantContent,
+        service: "tarot",
+        languageCode: selectedLanguage,
+      };
+
+      setChats((prev) => {
+        const existing = prev.find((chat) => chat.id === chatId);
+
+        if (!existing) return prev;
+
+        const updated: Chat = {
+          ...existing,
+          service: "tarot",
+          updatedAt: Date.now(),
+          messages: [...existing.messages, userMessage, assistantMessage],
+        };
+
+        return [updated, ...prev.filter((chat) => chat.id !== chatId)];
+      });
+
+      setTarotStatus("complete");
+      setTarotSession(null);
+      setTarotSelectedIndexes([]);
+      setTarotQuestion("");
+      await loadUserChats();
+      setTarotStatus("idle");
+    } catch (error) {
+      setTarotError(
+        error instanceof Error
+          ? error.message
+          : "Bhagya could not reveal these cards. Please try again."
+      );
+      setTarotStatus("selecting");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   async function uploadPalmImageForAnalysis({
@@ -929,6 +1285,21 @@ export default function Home() {
     if (!isLoggedIn) {
       localStorage.setItem(PENDING_QUESTION_KEY, cleanQuestion);
       router.push("/login?next=/");
+      return;
+    }
+
+    if (
+      selectedService === "tarot" &&
+      activeChatHasTarotReading &&
+      /\b(new|fresh|another|draw|shuffle)\b/i.test(cleanQuestion) &&
+      /\b(reading|spread|card|cards|tarot)\b/i.test(cleanQuestion)
+    ) {
+      setQuestion("");
+      setTarotQuestion("");
+      setTarotSession(null);
+      setTarotSelectedIndexes([]);
+      setTarotError("");
+      setTarotStatus("asking");
       return;
     }
 
@@ -1459,6 +1830,7 @@ export default function Home() {
     clearPalmScanImageSource();
     setIsPalmScanReady(false);
     setPalmVisualMap(null);
+    resetTarotFlow();
     setIsSidebarOpen(false);
 
     const headers = await getAuthHeaders();
@@ -1751,13 +2123,26 @@ export default function Home() {
             isLoading={isLoading || isCheckingAuth}
             inputRef={inputRef}
             selectedService={selectedService}
-            setSelectedService={setSelectedService}
+            setSelectedService={handleServiceChange}
             selectedLanguage={selectedLanguage}
             setSelectedLanguage={setSelectedLanguage}
             palmImage={palmImage}
             onPalmImageChange={handlePalmImageChange}
             handlePalmAnalyze={handlePalmAnalyze}
             isPalmAnalyzing={isPalmAnalyzing}
+            tarotStatus={tarotStatus}
+            tarotQuestion={tarotQuestion}
+            setTarotQuestion={setTarotQuestion}
+            tarotSpreadType={tarotSpreadType}
+            setTarotSpreadType={setTarotSpreadType}
+            tarotSession={tarotSession}
+            tarotSelectedIndexes={tarotSelectedIndexes}
+            tarotError={tarotError}
+            handleTarotStart={handleTarotStart}
+            handleTarotCardToggle={handleTarotCardToggle}
+            handleTarotReveal={handleTarotReveal}
+            resetTarotFlow={resetTarotFlow}
+            setTarotStatus={setTarotStatus}
             t={t}
           />
         </div>
@@ -1861,6 +2246,25 @@ export default function Home() {
                   isAnalyzing={isPalmAnalyzing}
                   disabled={isLoading || isCheckingAuth}
                 />
+              ) : selectedService === "tarot" ? (
+                <TarotExperience
+                  status={tarotStatus}
+                  question={tarotQuestion}
+                  setQuestion={setTarotQuestion}
+                  spreadType={tarotSpreadType}
+                  setSpreadType={setTarotSpreadType}
+                  session={tarotSession}
+                  selectedIndexes={tarotSelectedIndexes}
+                  error={tarotError}
+                  isLoading={isLoading}
+                  onStart={handleTarotStart}
+                  onToggleCard={handleTarotCardToggle}
+                  onReveal={handleTarotReveal}
+                  onReset={() => {
+                    resetTarotFlow();
+                    setTarotStatus("asking");
+                  }}
+                />
               ) : (
                 <>
                   {/* Headline */}
@@ -1892,7 +2296,7 @@ export default function Home() {
               {/* Service tabs */}
               <ServiceTabs
                 selectedService={selectedService}
-                setSelectedService={setSelectedService}
+                setSelectedService={handleServiceChange}
                 serviceLabels={t.services}
               />
             </div>
@@ -1976,7 +2380,7 @@ export default function Home() {
               {services.map((svc) => (
                 <button
                   key={svc.id}
-                  onClick={() => setSelectedService(svc.id)}
+                  onClick={() => handleServiceChange(svc.id)}
                   className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm transition ${
                     selectedService === svc.id
                       ? "bg-sky-500/20 text-sky-300 ring-1 ring-sky-500/40"
@@ -2217,7 +2621,7 @@ export default function Home() {
               <div className="mx-auto max-w-2xl px-3 pt-3">
                 <ServiceTabs
                   selectedService={selectedService}
-                  setSelectedService={setSelectedService}
+                  setSelectedService={handleServiceChange}
                   serviceLabels={t.services}
                   compact
                 />
@@ -2237,6 +2641,27 @@ export default function Home() {
                     onAnalyze={handlePalmAnalyze}
                     isAnalyzing={isPalmAnalyzing}
                     disabled={isLoading || isCheckingAuth}
+                  />
+                ) : selectedService === "tarot" &&
+                  (!activeChatHasTarotReading || tarotStatus !== "idle") ? (
+                  <TarotExperience
+                    compact
+                    status={tarotStatus}
+                    question={tarotQuestion}
+                    setQuestion={setTarotQuestion}
+                    spreadType={tarotSpreadType}
+                    setSpreadType={setTarotSpreadType}
+                    session={tarotSession}
+                    selectedIndexes={tarotSelectedIndexes}
+                    error={tarotError}
+                    isLoading={isLoading}
+                    onStart={handleTarotStart}
+                    onToggleCard={handleTarotCardToggle}
+                    onReveal={handleTarotReveal}
+                    onReset={() => {
+                      resetTarotFlow();
+                      setTarotStatus("asking");
+                    }}
                   />
                 ) : (
                   <ChatInput
@@ -2361,6 +2786,12 @@ export default function Home() {
 
 /* ── Rail icon wrapper ── */
 function MessageContent({ message }: { message: Message }) {
+  const tarotReading = parseTarotReadingContent(message.content);
+
+  if (tarotReading) {
+    return <TarotReadingMessage reading={tarotReading} />;
+  }
+
   const parsed = parseMessageContent(message.content);
 
   if (parsed.imageUrl) {
@@ -2384,6 +2815,301 @@ function MessageContent({ message }: { message: Message }) {
   }
 
   return <p className="whitespace-pre-wrap">{message.content}</p>;
+}
+
+function TarotReadingMessage({
+  reading,
+}: {
+  reading: TarotReadingMessagePayload;
+}) {
+  return (
+    <div className="w-[min(640px,calc(100vw-72px))] max-w-full space-y-4">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-200/70">
+          {reading.spreadName}
+        </p>
+        <h3 className="mt-1 text-[17px] font-semibold leading-6 text-white">
+          {reading.question}
+        </h3>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {reading.cards.map((card) => (
+          <div
+            key={`${card.position}-${card.cardId}`}
+            className="rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3"
+          >
+            <TarotCardArt card={card} />
+            <div className="mt-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-200/60">
+                {card.position}
+              </p>
+              <p className="mt-1 text-sm font-semibold leading-5 text-white">
+                {card.name}
+              </p>
+              <p className="mt-1 text-xs capitalize text-white/55">
+                {card.orientation}
+              </p>
+              <p className="mt-2 text-[12px] leading-5 text-white/62">
+                {card.shortMeaning}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="whitespace-pre-wrap text-[15px] leading-7 text-white/84">
+        {reading.interpretation}
+      </p>
+    </div>
+  );
+}
+
+function TarotCardArt({ card }: { card: DrawnTarotCard }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const keywords = card.keywords.slice(0, 3).join(" / ");
+
+  return (
+    <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-sky-300/15 bg-[#08111f] shadow-[0_18px_55px_rgba(14,165,233,0.16)]">
+      {!imageFailed && card.imagePath ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={card.imagePath}
+          alt={card.name}
+          onError={() => setImageFailed(true)}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        <div
+          className={`flex h-full w-full flex-col items-center justify-between p-3 text-center ${
+            card.orientation === "reversed" ? "rotate-180" : ""
+          }`}
+          style={{
+            background:
+              "radial-gradient(circle at 50% 18%, rgba(56,189,248,0.24), transparent 34%), linear-gradient(160deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+          }}
+        >
+          <span className="h-1.5 w-12 rounded-full bg-sky-300/50" />
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-100/55">
+              Tarot
+            </p>
+            <p className="mt-3 text-lg font-semibold leading-5 text-white">
+              {card.name}
+            </p>
+            <p className="mt-3 text-[10px] uppercase tracking-[0.16em] text-white/35">
+              {keywords}
+            </p>
+          </div>
+          <span className="h-1.5 w-12 rounded-full bg-sky-300/50" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TarotExperience({
+  compact = false,
+  status,
+  question,
+  setQuestion,
+  spreadType,
+  setSpreadType,
+  session,
+  selectedIndexes,
+  error,
+  isLoading,
+  onStart,
+  onToggleCard,
+  onReveal,
+  onReset,
+}: {
+  compact?: boolean;
+  status: TarotFlowStatus;
+  question: string;
+  setQuestion: (value: string) => void;
+  spreadType: TarotSpreadType;
+  setSpreadType: (value: TarotSpreadType) => void;
+  session: TarotSessionState | null;
+  selectedIndexes: number[];
+  error: string;
+  isLoading: boolean;
+  onStart: () => void;
+  onToggleCard: (index: number) => void;
+  onReveal: () => void;
+  onReset: () => void;
+}) {
+  const topicSuggestions = [
+    "Love",
+    "Career",
+    "Money",
+    "Personal growth",
+    "A decision",
+    "General guidance",
+  ];
+  const activeSession =
+    status === "selecting" || status === "revealing" ? session : null;
+  const isSelecting = Boolean(activeSession);
+  const isShuffling = status === "shuffling";
+  const isRevealing = status === "revealing";
+  const canReveal =
+    Boolean(activeSession) &&
+    selectedIndexes.length === activeSession?.selectionCount;
+
+  return (
+    <div
+      className={`mx-auto w-full rounded-[24px] border border-sky-300/12 bg-white/[0.045] p-4 text-left shadow-[0_22px_80px_rgba(14,165,233,0.18)] backdrop-blur-2xl ${
+        compact ? "max-w-2xl" : "max-w-xl"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-200/65">
+            Tarot
+          </p>
+          <h2 className="mt-1 text-xl font-semibold leading-7 text-white">
+            {isSelecting ? "Choose your cards" : "Ask the cards"}
+          </h2>
+          <p className="mt-1 text-sm leading-5 text-white/50">
+            {isSelecting
+              ? `${activeSession?.spreadName} - select ${activeSession?.selectionCount} card(s).`
+              : "Set an intention, then choose a one-card or three-card spread."}
+          </p>
+        </div>
+
+        {(session || status !== "idle") && (
+          <button
+            type="button"
+            onClick={onReset}
+            disabled={isLoading}
+            className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-white/60 transition hover:border-sky-300/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+
+      {!isSelecting ? (
+        <div className="mt-4 space-y-4">
+          <textarea
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="What would you like guidance on?"
+            rows={compact ? 2 : 3}
+            className="w-full resize-none rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/32 focus:border-sky-300/40"
+          />
+
+          <div className="flex flex-wrap gap-2">
+            {topicSuggestions.map((topic) => (
+              <button
+                key={topic}
+                type="button"
+                onClick={() => setQuestion(`I want guidance about ${topic.toLowerCase()}.`)}
+                className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-white/58 transition hover:border-sky-300/35 hover:text-white"
+              >
+                {topic}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {(["one-card", "three-card"] as const).map((spread) => (
+              <button
+                key={spread}
+                type="button"
+                onClick={() => setSpreadType(spread)}
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  spreadType === spread
+                    ? "border-sky-300/45 bg-sky-400/10 text-white shadow-[0_12px_34px_rgba(56,189,248,0.12)]"
+                    : "border-white/[0.08] bg-white/[0.03] text-white/58 hover:border-white/18 hover:text-white"
+                }`}
+              >
+                <span className="block text-sm font-semibold">
+                  {spread === "one-card" ? "One Card" : "Three Cards"}
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-white/45">
+                  {spread === "one-card"
+                    ? "Quick guidance"
+                    : "Past, present, direction"}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={onStart}
+            disabled={isLoading}
+            className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-gradient-to-r from-sky-400 to-blue-700 px-5 text-sm font-semibold text-white shadow-[0_16px_42px_rgba(56,189,248,0.24)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isShuffling ? <LoadingDots /> : "Shuffle Cards"}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-4">
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-5">
+            {activeSession?.availablePositions.map((cardIndex, visualIndex) => {
+              const selected = selectedIndexes.includes(cardIndex);
+              const angle =
+                (visualIndex -
+                  (activeSession.availablePositions.length - 1) / 2) *
+                2.4;
+
+              return (
+                <button
+                  key={cardIndex}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => onToggleCard(cardIndex)}
+                  disabled={isLoading}
+                  className={`group aspect-[2/3] rounded-xl border transition duration-200 ${
+                    selected
+                      ? "border-sky-300/70 bg-sky-300/12 shadow-[0_18px_45px_rgba(56,189,248,0.24)]"
+                      : "border-white/[0.08] bg-white/[0.035] hover:border-sky-300/35"
+                  } disabled:cursor-not-allowed`}
+                  style={{
+                    transform: `translateY(${selected ? "-8px" : "0"}) rotate(${angle}deg)`,
+                  }}
+                >
+                  <span
+                    className="flex h-full w-full items-center justify-center rounded-[11px] text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-100/55"
+                    style={{
+                      background:
+                        "radial-gradient(circle at 50% 18%, rgba(56,189,248,0.24), transparent 32%), linear-gradient(160deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+                    }}
+                  >
+                    {selected
+                      ? selectedIndexes.indexOf(cardIndex) + 1
+                      : "Bhagya"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-white/52">
+              {selectedIndexes.length} of {activeSession?.selectionCount} selected
+            </p>
+            <button
+              type="button"
+              onClick={onReveal}
+              disabled={!canReveal || isLoading}
+              className="flex min-h-11 items-center justify-center rounded-2xl bg-gradient-to-r from-sky-400 to-blue-700 px-5 text-sm font-semibold text-white shadow-[0_16px_42px_rgba(56,189,248,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isRevealing ? <LoadingDots /> : "Reveal Reading"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-3 rounded-2xl border border-rose-300/15 bg-rose-400/10 px-3 py-2 text-sm leading-5 text-rose-100/78">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function PalmAnalysisErrorCard({
@@ -2438,6 +3164,19 @@ function UniversalMobileLanding({
   onPalmImageChange,
   handlePalmAnalyze,
   isPalmAnalyzing,
+  tarotStatus,
+  tarotQuestion,
+  setTarotQuestion,
+  tarotSpreadType,
+  setTarotSpreadType,
+  tarotSession,
+  tarotSelectedIndexes,
+  tarotError,
+  handleTarotStart,
+  handleTarotCardToggle,
+  handleTarotReveal,
+  resetTarotFlow,
+  setTarotStatus,
   t,
 }: {
   question: string;
@@ -2453,6 +3192,19 @@ function UniversalMobileLanding({
   onPalmImageChange: (image: UploadedImage | null) => void;
   handlePalmAnalyze: (image: UploadedImage) => void;
   isPalmAnalyzing: boolean;
+  tarotStatus: TarotFlowStatus;
+  tarotQuestion: string;
+  setTarotQuestion: (value: string) => void;
+  tarotSpreadType: TarotSpreadType;
+  setTarotSpreadType: (value: TarotSpreadType) => void;
+  tarotSession: TarotSessionState | null;
+  tarotSelectedIndexes: number[];
+  tarotError: string;
+  handleTarotStart: () => void;
+  handleTarotCardToggle: (index: number) => void;
+  handleTarotReveal: () => void;
+  resetTarotFlow: (nextQuestion?: string) => void;
+  setTarotStatus: (status: TarotFlowStatus) => void;
   t: UiText;
 }) {
   const isEnglish = selectedLanguage === "english";
@@ -2531,6 +3283,28 @@ function UniversalMobileLanding({
                 onAnalyze={handlePalmAnalyze}
                 isAnalyzing={isPalmAnalyzing}
                 disabled={isLoading}
+              />
+            </div>
+          ) : selectedService === "tarot" ? (
+            <div className="mt-6">
+              <TarotExperience
+                compact
+                status={tarotStatus}
+                question={tarotQuestion}
+                setQuestion={setTarotQuestion}
+                spreadType={tarotSpreadType}
+                setSpreadType={setTarotSpreadType}
+                session={tarotSession}
+                selectedIndexes={tarotSelectedIndexes}
+                error={tarotError}
+                isLoading={isLoading}
+                onStart={handleTarotStart}
+                onToggleCard={handleTarotCardToggle}
+                onReveal={handleTarotReveal}
+                onReset={() => {
+                  resetTarotFlow();
+                  setTarotStatus("asking");
+                }}
               />
             </div>
           ) : (
