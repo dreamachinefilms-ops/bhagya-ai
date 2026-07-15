@@ -76,6 +76,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
+function parseImageMessageContent(content: string) {
+  if (!content.trim().startsWith("{")) {
+    return { content };
+  }
+
+  try {
+    const payload: unknown = JSON.parse(content);
+
+    if (
+      isRecord(payload) &&
+      payload.type === "bhagya.image" &&
+      typeof payload.imageUrl === "string"
+    ) {
+      return {
+        content:
+          typeof payload.text === "string"
+            ? payload.text.slice(0, 3000)
+            : "Palm photo uploaded for analysis.",
+        imageUrl: payload.imageUrl,
+      };
+    }
+  } catch {
+    return { content };
+  }
+
+  return { content };
+}
+
 function isServiceType(value: unknown): value is ServiceType {
   return (
     typeof value === "string" &&
@@ -98,19 +126,26 @@ function validateMessages(messages: unknown): BhagyaConversationMessage[] {
 
   return messages
     .filter(isRecord)
-    .map((message) => ({
-      role: message.role === "assistant" ? "assistant" : "user",
-      content:
-        typeof message.content === "string"
-          ? message.content.slice(0, 3000)
-          : "",
-      service:
-        typeof message.service === "string" ? message.service : undefined,
-      languageCode:
-        typeof message.languageCode === "string"
-          ? message.languageCode
-          : undefined,
-    }))
+    .map((message) => {
+      const rawContent =
+        typeof message.content === "string" ? message.content : "";
+      const parsed = parseImageMessageContent(rawContent);
+
+      return {
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: parsed.content.slice(0, 3000),
+        service:
+          typeof message.service === "string" ? message.service : undefined,
+        languageCode:
+          typeof message.languageCode === "string"
+            ? message.languageCode
+            : undefined,
+        imageUrl:
+          typeof message.imageUrl === "string"
+            ? message.imageUrl
+            : parsed.imageUrl,
+      };
+    })
     .filter((message) => Boolean(message.content?.trim()));
 }
 

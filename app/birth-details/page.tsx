@@ -6,6 +6,9 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 type BirthDetailsResponse = {
+  success?: boolean;
+  code?: string;
+  message?: string;
   complete?: boolean;
   profile?: {
     fullName?: string;
@@ -27,6 +30,22 @@ type FieldErrors = {
   form?: string;
 };
 
+const birthProfileErrorMessages: Record<string, string> = {
+  AUTH_REQUIRED: "Your session has expired. Please sign in again.",
+  INVALID_NAME: "Please enter your full name.",
+  INVALID_DATE: "Please enter a valid date of birth.",
+  INVALID_TIME:
+    "Please enter a valid birth time or choose 'I don't know my exact birth time'.",
+  LOCATION_NOT_FOUND:
+    "We could not find that place. Please enter City, State, Country.",
+  PROFILE_SAVE_FAILED:
+    "We could not save your name right now. Please try again.",
+  BIRTH_DETAILS_SAVE_FAILED:
+    "We could not save your birth details right now. Please try again.",
+  DATABASE_SCHEMA_MISMATCH:
+    "Your birth profile database needs an update before saving.",
+};
+
 type OnboardingStep = "form" | "preparing" | "welcome";
 
 function getMetadataName(metadata: Record<string, unknown> | undefined) {
@@ -41,6 +60,14 @@ function getMetadataName(metadata: Record<string, unknown> | undefined) {
 
 function getFirstName(fullName: string) {
   return fullName.trim().split(/\s+/)[0] || "there";
+}
+
+function getBirthProfileErrorMessage(data: BirthDetailsResponse | null) {
+  if (data?.code && birthProfileErrorMessages[data.code]) {
+    return birthProfileErrorMessages[data.code];
+  }
+
+  return data?.message || "";
 }
 
 export default function BirthDetailsPage() {
@@ -59,7 +86,6 @@ export default function BirthDetailsPage() {
   const [isChecking, setIsChecking] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [step, setStep] = useState<OnboardingStep>("form");
   const [welcomeMessage, setWelcomeMessage] = useState("");
   const [welcomeFirstName, setWelcomeFirstName] = useState("there");
@@ -87,7 +113,6 @@ export default function BirthDetailsPage() {
       }
 
       if (isMounted) {
-        setAccessToken(session.access_token);
         setFullName(
           getMetadataName(
             session.user.user_metadata as Record<string, unknown> | undefined
@@ -221,13 +246,17 @@ export default function BirthDetailsPage() {
 
     if (!validateForm()) return;
 
-    const token =
-      accessToken || (await supabase.auth.getSession()).data.session?.access_token;
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-    if (!token) {
+    if (sessionError || !session?.access_token) {
       router.replace("/login?next=/birth-details");
       return;
     }
+
+    const token = session.access_token;
 
     setIsSaving(true);
     setErrors({});
@@ -241,32 +270,33 @@ export default function BirthDetailsPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          fullName,
+          fullName: fullName.trim(),
           dateOfBirth,
           birthTime: birthTimeKnown ? birthTime : null,
           birthTimeKnown,
-          birthPlace,
+          birthPlace: birthPlace.trim(),
         }),
       });
 
-      const data = (await res.json()) as {
-        message?: string;
-        field?: keyof FieldErrors;
-        suggestions?: string[];
-        profile?: {
-          firstName?: string;
-        };
-      };
+      const data = (await res.json().catch(() => null)) as
+        | (BirthDetailsResponse & {
+            field?: keyof FieldErrors;
+            suggestions?: string[];
+          })
+        | null;
 
       if (!res.ok) {
-        const message =
-          data.message || "Could not save your birth profile. Please try again.";
+        console.error("Birth profile API error:", data);
 
-        if (data.suggestions?.length) {
+        const message =
+          getBirthProfileErrorMessage(data) ||
+          `Could not save your profile. Error ${res.status}.`;
+
+        if (data?.suggestions?.length) {
           setSuggestions(data.suggestions);
         }
 
-        if (data.field) {
+        if (data?.field) {
           setErrors({ [data.field]: message });
         } else {
           setErrors({ form: message });
@@ -277,7 +307,7 @@ export default function BirthDetailsPage() {
 
       await showWelcome(
         token,
-        data.profile?.firstName || getFirstName(fullName)
+        data?.profile?.firstName || getFirstName(fullName)
       );
     } catch {
       setErrors({
@@ -450,7 +480,7 @@ export default function BirthDetailsPage() {
                           }}
                           className="h-4 w-4 accent-sky-400"
                         />
-                        I don't know my exact birth time
+                        I don&apos;t know my exact birth time
                       </label>
                       <p className="mt-2 text-xs leading-5 text-white/35">
                         If unknown, Bhagya will use a broad noon fallback and avoid precise Lagna or house claims.

@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/backend/auth";
+import { createClient, type User } from "@supabase/supabase-js";
 import {
   getSavedBirthDetails,
   getSavedUserProfile,
@@ -8,7 +7,6 @@ import {
   upsertBirthDetails,
   upsertUserProfile,
 } from "@/lib/backend/birthDetailsMemory";
-import { safeErrorResponse } from "@/lib/backend/errors";
 import {
   findBirthPlaceSuggestions,
   resolveBirthPlace,
@@ -16,70 +14,180 @@ import {
 
 const routeName = "api/birth-details";
 
-function unauthorizedResponse() {
-  return NextResponse.json(
-    { code: "UNAUTHORIZED", message: "Please sign in again to continue." },
-    { status: 401 }
-  );
-}
+type AuthResult =
+  | {
+      user: User;
+    }
+  | {
+      response: Response;
+    };
 
-function requestError({
-  code,
-  message,
-  field,
-  status = 400,
-  suggestions,
-}: {
-  code: string;
-  message: string;
-  field?: string;
-  status?: number;
-  suggestions?: string[];
-}) {
-  return NextResponse.json(
-    { code, message, field, suggestions },
+function apiError(
+  status: number,
+  code: string,
+  message: string,
+  details?: unknown
+) {
+  if (details) {
+    console.error(`[birth-details] ${code}`, details);
+  }
+
+  return Response.json(
+    {
+      success: false,
+      code,
+      message,
+    },
     { status }
   );
 }
 
-function validationError(message: string, field?: string) {
-  return requestError({
-    code: "VALIDATION_ERROR",
-    message,
-    field,
-    status: 400,
+function logSupabaseFailure(label: string, error: unknown) {
+  const supabaseError = error as {
+    code?: unknown;
+    message?: unknown;
+    details?: unknown;
+    hint?: unknown;
+  };
+
+  console.error(`[birth-details] ${label}`, {
+    code:
+      typeof supabaseError?.code === "string"
+        ? supabaseError.code
+        : undefined,
+    message:
+      typeof supabaseError?.message === "string"
+        ? supabaseError.message
+        : undefined,
+    details: supabaseError?.details,
+    hint: supabaseError?.hint,
   });
+}
+
+function isSchemaMismatch(error: unknown) {
+  const supabaseError = error as {
+    code?: unknown;
+    message?: unknown;
+  };
+  const code = typeof supabaseError?.code === "string" ? supabaseError.code : "";
+  const message =
+    typeof supabaseError?.message === "string" ? supabaseError.message : "";
+
+  return (
+    code === "PGRST204" ||
+    code === "42703" ||
+    code === "42P01" ||
+    /schema cache|column|relation|does not exist/i.test(message)
+  );
+}
+
+function getSupabaseAuthClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error("SUPABASE_ENV_MISSING");
+  }
+
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
+
+async function authenticateBirthProfileRequest(
+  request: Request
+): Promise<AuthResult> {
+  const authorization = request.headers.get("authorization");
+
+  if (!authorization?.startsWith("Bearer ")) {
+    return {
+      response: apiError(
+        401,
+        "AUTH_REQUIRED",
+        "Please sign in again to continue."
+      ),
+    };
+  }
+
+  const token = authorization.slice("Bearer ".length).trim();
+
+  if (!token) {
+    return {
+      response: apiError(
+        401,
+        "AUTH_REQUIRED",
+        "Please sign in again to continue."
+      ),
+    };
+  }
+
+  let supabase;
+
+  try {
+    supabase = getSupabaseAuthClient();
+  } catch (error) {
+    return {
+      response: apiError(
+        500,
+        "UNKNOWN_ERROR",
+        "We could not prepare your profile right now. Please try again.",
+        error
+      ),
+    };
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser(token);
+
+  if (userError || !user) {
+    return {
+      response: apiError(
+        401,
+        "AUTH_REQUIRED",
+        "Your session has expired. Please sign in again.",
+        userError
+      ),
+    };
+  }
+
+  return { user };
+}
+
+function normalizeFullName(value: unknown) {
+  if (typeof value !== "string") return null;
+
+  const normalizedFullName = value.trim().replace(/\s+/g, " ");
+  const firstName = normalizedFullName.split(" ").filter(Boolean)[0] || "";
+
+  if (normalizedFullName.length < 2 || !firstName || !/\p{L}/u.test(firstName)) {
+    return null;
+  }
+
+  return {
+    fullName: normalizedFullName.slice(0, 80),
+    firstName,
+  };
 }
 
 function normalizeDateOfBirth(value: unknown) {
   if (typeof value !== "string") return null;
 
   const dateOfBirth = value.trim();
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth);
 
-  if (!match) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) return null;
 
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
+  const birthDate = new Date(`${dateOfBirth}T00:00:00`);
 
-  if (
-    parsed.getUTCFullYear() !== year ||
-    parsed.getUTCMonth() !== month - 1 ||
-    parsed.getUTCDate() !== day
-  ) {
+  if (!dateOfBirth || Number.isNaN(birthDate.getTime()) || birthDate >= new Date()) {
     return null;
   }
-
-  const today = new Date();
-  const todayUtc = Date.UTC(
-    today.getUTCFullYear(),
-    today.getUTCMonth(),
-    today.getUTCDate()
-  );
-
-  if (parsed.getTime() >= todayUtc) return null;
 
   return dateOfBirth;
 }
@@ -88,30 +196,21 @@ function normalizeBirthTime(value: unknown) {
   if (typeof value !== "string") return null;
 
   const birthTime = value.trim();
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(birthTime);
 
-  return match ? birthTime : null;
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(birthTime) ? birthTime : null;
 }
 
-function normalizeFullName(value: unknown) {
-  if (typeof value !== "string") return null;
-
-  const fullName = value.replace(/\s+/g, " ").trim();
-
-  if (fullName.length < 2 || fullName.length > 80) return null;
-  if (!/\p{L}/u.test(fullName)) return null;
-
-  return fullName;
-}
-
-function getFirstName(fullName: string) {
-  return fullName.split(/\s+/)[0] || fullName;
+function normalizeBirthTimeKnown(value: unknown) {
+  return value === false ? false : true;
 }
 
 function normalizeBirthPlace(value: unknown) {
   if (typeof value !== "string") return null;
 
-  const birthPlace = value.replace(/\s+/g, " ").trim();
+  const birthPlace = value
+    .trim()
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/\s+/g, " ");
 
   if (birthPlace.length < 2 || birthPlace.length > 120) return null;
   if (!/[a-zA-Z]/.test(birthPlace)) return null;
@@ -120,54 +219,41 @@ function normalizeBirthPlace(value: unknown) {
   return birthPlace;
 }
 
-function normalizeBirthTimeKnown(value: unknown) {
-  return value === false ? false : true;
-}
-
-function logSaveFailure(error: unknown, userId?: string) {
-  const maybeError = error as { code?: unknown; message?: unknown };
-
-  console.error("Birth profile save failed:", {
-    userId,
-    code: typeof maybeError?.code === "string" ? maybeError.code : undefined,
-    message:
-      typeof maybeError?.message === "string" ? maybeError.message : undefined,
-  });
-}
-
-function saveFailedResponse(error: unknown, userId?: string) {
-  logSaveFailure(error, userId);
-
-  return NextResponse.json(
-    {
-      code: "SAVE_FAILED",
-      message:
-        "We could not save your birth profile right now. Please try again.",
-    },
-    { status: 500 }
-  );
-}
-
 export async function GET(request: Request) {
   let userId: string | undefined;
 
   try {
-    const { user, error: authError } = await requireUser(request);
+    const auth = await authenticateBirthProfileRequest(request);
 
-    if (authError || !user) {
-      return unauthorizedResponse();
+    if ("response" in auth) return auth.response;
+
+    userId = auth.user.id;
+
+    let profile = null;
+    let birthDetails = null;
+
+    try {
+      [profile, birthDetails] = await Promise.all([
+        getSavedUserProfile({ request, userId: auth.user.id }),
+        getSavedBirthDetails({
+          request,
+          userId: auth.user.id,
+        }),
+      ]);
+    } catch (error) {
+      logSupabaseFailure("profile read failed", error);
+
+      return apiError(
+        500,
+        isSchemaMismatch(error)
+          ? "DATABASE_SCHEMA_MISMATCH"
+          : "UNKNOWN_ERROR",
+        "We could not load your birth profile right now. Please try again."
+      );
     }
 
-    userId = user.id;
-    const [profile, birthDetails] = await Promise.all([
-      getSavedUserProfile({ request, userId: user.id }),
-      getSavedBirthDetails({
-        request,
-        userId: user.id,
-      }),
-    ]);
-
-    return NextResponse.json({
+    return Response.json({
+      success: true,
       complete: isCompleteBirthProfile({ profile, birthDetails }),
       profile: {
         fullName: profile?.fullName || "",
@@ -176,7 +262,16 @@ export async function GET(request: Request) {
       birthDetails: toBirthDetailsResponse(birthDetails),
     });
   } catch (error) {
-    return safeErrorResponse(error, routeName, userId);
+    return apiError(
+      500,
+      "UNKNOWN_ERROR",
+      "We could not load your birth profile right now. Please try again.",
+      {
+        routeName,
+        userId,
+        error,
+      }
+    );
   }
 }
 
@@ -184,27 +279,26 @@ export async function POST(request: Request) {
   let userId: string | undefined;
 
   try {
-    const { user, error: authError } = await requireUser(request);
+    const auth = await authenticateBirthProfileRequest(request);
 
-    if (authError || !user) {
-      return unauthorizedResponse();
-    }
+    if ("response" in auth) return auth.response;
 
-    userId = user.id;
+    userId = auth.user.id;
 
     let body: unknown;
 
     try {
       body = await request.json();
-    } catch {
-      return validationError("Invalid JSON body.");
+    } catch (error) {
+      return apiError(400, "UNKNOWN_ERROR", "Invalid JSON body.", error);
     }
 
     const requestBody =
       body && typeof body === "object" && !Array.isArray(body)
         ? (body as Record<string, unknown>)
         : {};
-    const fullName = normalizeFullName(requestBody.fullName);
+
+    const normalizedName = normalizeFullName(requestBody.fullName);
     const dateOfBirth = normalizeDateOfBirth(requestBody.dateOfBirth);
     const birthTimeKnown = normalizeBirthTimeKnown(requestBody.birthTimeKnown);
     const birthTime = birthTimeKnown
@@ -212,87 +306,129 @@ export async function POST(request: Request) {
       : null;
     const birthPlace = normalizeBirthPlace(requestBody.birthPlace);
 
-    if (!fullName) {
-      return validationError("Please enter your full name.", "fullName");
+    if (!normalizedName) {
+      return apiError(422, "INVALID_NAME", "Please enter your full name.");
     }
 
     if (!dateOfBirth) {
-      return validationError("Please enter a valid past date of birth.", "dateOfBirth");
-    }
-
-    if (birthTimeKnown && !birthTime) {
-      return validationError("Please enter a valid birth time.", "birthTime");
-    }
-
-    if (!birthPlace) {
-      return validationError(
-        "Please enter your birth place as City, State, Country.",
-        "birthPlace"
+      return apiError(
+        422,
+        "INVALID_DATE",
+        "Please enter a valid date of birth."
       );
     }
 
-    const location = resolveBirthPlace(birthPlace);
+    if (birthTimeKnown && !birthTime) {
+      return apiError(
+        422,
+        "INVALID_TIME",
+        "Please enter a valid birth time."
+      );
+    }
 
-    if (!location) {
-      return requestError({
-        code: "LOCATION_NOT_FOUND",
-        message:
-          "We could not locate that birth place. Please enter a clear city, state, and country.",
-        field: "birthPlace",
-        status: 422,
+    if (!birthPlace) {
+      return apiError(
+        422,
+        "LOCATION_NOT_FOUND",
+        "We could not find that place. Please enter City, State, Country."
+      );
+    }
+
+    const resolvedLocation = resolveBirthPlace(birthPlace);
+
+    if (!resolvedLocation) {
+      console.error("[birth-details] location resolution failed", {
+        input: birthPlace,
         suggestions: findBirthPlaceSuggestions(birthPlace).map(
           (suggestion) => suggestion.displayName
         ),
       });
-    }
 
-    const firstName = getFirstName(fullName);
+      return apiError(
+        422,
+        "LOCATION_NOT_FOUND",
+        "We could not find that place. Please enter City, State, Country."
+      );
+    }
 
     try {
       await upsertUserProfile({
         request,
-        userId: user.id,
-        email: user.email,
-        fullName,
-        firstName,
+        userId: auth.user.id,
+        email: auth.user.email,
+        fullName: normalizedName.fullName,
+        firstName: normalizedName.firstName,
       });
+    } catch (error) {
+      logSupabaseFailure("profiles upsert failed", error);
 
+      return apiError(
+        500,
+        isSchemaMismatch(error)
+          ? "DATABASE_SCHEMA_MISMATCH"
+          : "PROFILE_SAVE_FAILED",
+        isSchemaMismatch(error)
+          ? "Your profile database needs an update before saving."
+          : "We could not save your name. Please try again."
+      );
+    }
+
+    try {
       await upsertBirthDetails({
         request,
-        userId: user.id,
+        userId: auth.user.id,
         dateOfBirth,
         birthTime,
         birthTimeKnown,
-        birthPlace: location.displayName || location.name || birthPlace,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        timezoneOffset: location.timezoneOffset,
+        birthPlace:
+          resolvedLocation.displayName || resolvedLocation.name || birthPlace,
+        latitude: resolvedLocation.latitude,
+        longitude: resolvedLocation.longitude,
+        timezoneOffset: resolvedLocation.timezoneOffset,
+        timezoneId: resolvedLocation.timezoneId,
       });
     } catch (error) {
-      return saveFailedResponse(error, user.id);
+      logSupabaseFailure("birth details upsert failed", error);
+
+      return apiError(
+        500,
+        isSchemaMismatch(error)
+          ? "DATABASE_SCHEMA_MISMATCH"
+          : "BIRTH_DETAILS_SAVE_FAILED",
+        isSchemaMismatch(error)
+          ? "Your birth profile database needs an update before saving."
+          : "We could not save your birth details. Please try again."
+      );
     }
 
-    const [savedProfile, savedBirthDetails] = await Promise.all([
-      getSavedUserProfile({ request, userId: user.id }),
-      getSavedBirthDetails({
-        request,
-        userId: user.id,
-      }),
-    ]);
-
-    return NextResponse.json({
+    return Response.json({
       success: true,
-      complete: isCompleteBirthProfile({
-        profile: savedProfile,
-        birthDetails: savedBirthDetails,
-      }),
       profile: {
-        fullName: savedProfile?.fullName || fullName,
-        firstName: savedProfile?.firstName || firstName,
+        fullName: normalizedName.fullName,
+        firstName: normalizedName.firstName,
       },
-      birthDetails: toBirthDetailsResponse(savedBirthDetails),
+      birthDetails: {
+        dateOfBirth,
+        birthTime: birthTimeKnown ? birthTime : null,
+        birthTimeKnown,
+        birthPlace:
+          resolvedLocation.displayName || resolvedLocation.name || birthPlace,
+        latitude: resolvedLocation.latitude,
+        longitude: resolvedLocation.longitude,
+        timezoneOffset: resolvedLocation.timezoneOffset,
+        timezoneId: resolvedLocation.timezoneId,
+      },
     });
   } catch (error) {
-    return safeErrorResponse(error, routeName, userId);
+    return apiError(
+      500,
+      "UNKNOWN_ERROR",
+      "We could not save your birth profile right now. Please try again.",
+      {
+        routeName,
+        userId,
+        error,
+      }
+    );
   }
 }

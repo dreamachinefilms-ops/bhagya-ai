@@ -23,14 +23,33 @@ function getOpenAIClient() {
 export async function callBhagyaOpenAI({
   instructions,
   input,
+  imageUrl,
 }: {
   instructions: string;
   input: string;
+  imageUrl?: string;
 }) {
   const response = await getOpenAIClient().responses.create({
     model: process.env.OPENAI_MODEL || "gpt-5.4-mini",
     instructions,
-    input,
+    input: imageUrl
+      ? [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: input,
+              },
+              {
+                type: "input_image",
+                image_url: imageUrl,
+                detail: "high",
+              },
+            ],
+          },
+        ]
+      : input,
   });
 
   return response.output_text;

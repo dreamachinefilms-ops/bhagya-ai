@@ -7,6 +7,7 @@ export type BhagyaConversationMessage = {
   content?: string;
   service?: string;
   languageCode?: string;
+  imageUrl?: string;
 };
 
 const allowedServices: BhagyaService[] = [

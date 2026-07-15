@@ -9,6 +9,7 @@ export type SavedBirthDetails = {
   latitude?: number | null;
   longitude?: number | null;
   timezoneOffset?: string | null;
+  timezoneId?: string | null;
 };
 
 export type SavedUserProfile = {
@@ -18,6 +19,28 @@ export type SavedUserProfile = {
 
 function hasFiniteCoordinate(value: number | null | undefined) {
   return value !== null && value !== undefined && Number.isFinite(Number(value));
+}
+
+function logSupabaseError(label: string, error: unknown) {
+  const supabaseError = error as {
+    code?: unknown;
+    message?: unknown;
+    details?: unknown;
+    hint?: unknown;
+  };
+
+  console.error(`[birth-details] ${label}`, {
+    code:
+      typeof supabaseError?.code === "string"
+        ? supabaseError.code
+        : undefined,
+    message:
+      typeof supabaseError?.message === "string"
+        ? supabaseError.message
+        : undefined,
+    details: supabaseError?.details,
+    hint: supabaseError?.hint,
+  });
 }
 
 export function isCompleteBirthDetails(details: SavedBirthDetails | null) {
@@ -60,8 +83,8 @@ export async function getSavedUserProfile({
     .maybeSingle();
 
   if (error) {
-    console.error("Fetch profile error:", error.message);
-    return null;
+    logSupabaseError("fetch profile failed", error);
+    throw error;
   }
 
   if (!data) return null;
@@ -98,10 +121,7 @@ export async function upsertUserProfile({
   );
 
   if (error) {
-    console.error("Upsert profile error:", {
-      code: error.code,
-      message: error.message,
-    });
+    logSupabaseError("profiles upsert failed", error);
     throw error;
   }
 }
@@ -118,7 +138,7 @@ export async function getSavedBirthDetails({
   const { data, error } = await supabase
     .from("user_birth_details")
     .select(
-      "id,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset"
+      "id,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset,timezone_id"
     )
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
@@ -126,8 +146,8 @@ export async function getSavedBirthDetails({
     .maybeSingle();
 
   if (error) {
-    console.error("Fetch birth details error:", error.message);
-    return null;
+    logSupabaseError("fetch birth details failed", error);
+    throw error;
   }
 
   if (!data) return null;
@@ -141,6 +161,7 @@ export async function getSavedBirthDetails({
     latitude: data.latitude,
     longitude: data.longitude,
     timezoneOffset: data.timezone_offset,
+    timezoneId: data.timezone_id,
   };
 }
 
@@ -154,6 +175,7 @@ export async function upsertBirthDetails({
   latitude,
   longitude,
   timezoneOffset,
+  timezoneId,
 }: {
   request: Request;
   userId: string;
@@ -164,9 +186,12 @@ export async function upsertBirthDetails({
   latitude?: number | null;
   longitude?: number | null;
   timezoneOffset?: string | null;
+  timezoneId?: string | null;
 }) {
   const supabase = createSupabaseUserClient(request);
-  const { error } = await supabase.from("user_birth_details").upsert(
+  const { data, error } = await supabase
+    .from("user_birth_details")
+    .upsert(
     {
       user_id: userId,
       date_of_birth: dateOfBirth,
@@ -176,18 +201,22 @@ export async function upsertBirthDetails({
       latitude,
       longitude,
       timezone_offset: timezoneOffset,
+      timezone_id: timezoneId,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id" }
-  );
+    )
+    .select(
+      "id,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset,timezone_id"
+    )
+    .single();
 
   if (error) {
-    console.error("Upsert birth details error:", {
-      code: error.code,
-      message: error.message,
-    });
+    logSupabaseError("birth details upsert failed", error);
     throw error;
   }
+
+  return data;
 }
 
 export function toBirthDetailsResponse(details: SavedBirthDetails | null) {
@@ -201,5 +230,6 @@ export function toBirthDetailsResponse(details: SavedBirthDetails | null) {
     latitude: details.latitude ?? undefined,
     longitude: details.longitude ?? undefined,
     timezoneOffset: details.timezoneOffset ?? undefined,
+    timezoneId: details.timezoneId ?? undefined,
   };
 }

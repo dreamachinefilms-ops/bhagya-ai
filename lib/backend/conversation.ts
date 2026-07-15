@@ -6,6 +6,38 @@ function isMessageRecord(message: unknown): message is BhagyaConversationMessage
   return Boolean(message && typeof message === "object");
 }
 
+function parseImageMessageContent(content: string) {
+  if (!content.trim().startsWith("{")) {
+    return { content };
+  }
+
+  try {
+    const payload: unknown = JSON.parse(content);
+
+    if (
+      payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      "type" in payload &&
+      payload.type === "bhagya.image" &&
+      "imageUrl" in payload &&
+      typeof payload.imageUrl === "string"
+    ) {
+      return {
+        content:
+          "text" in payload && typeof payload.text === "string"
+            ? payload.text
+            : "Palm photo uploaded for analysis.",
+        imageUrl: payload.imageUrl,
+      };
+    }
+  } catch {
+    return { content };
+  }
+
+  return { content };
+}
+
 export function sanitizeMessages(messages: unknown[]) {
   return messages
     .filter(isMessageRecord)
@@ -19,15 +51,22 @@ export function sanitizeMessages(messages: unknown[]) {
       );
     })
     .slice(-12)
-    .map((message) => ({
-      role: message.role === "assistant" ? "assistant" : "user",
-      content:
-        typeof message.content === "string"
-          ? message.content.slice(0, 3000)
-          : "",
-      service: message.service,
-      languageCode: message.languageCode,
-    }));
+    .map((message) => {
+      const rawContent =
+        typeof message.content === "string" ? message.content : "";
+      const parsed = parseImageMessageContent(rawContent);
+
+      return {
+        role: message.role === "assistant" ? "assistant" : "user",
+        content:
+          typeof parsed.content === "string"
+            ? parsed.content.slice(0, 3000)
+            : "",
+        service: message.service,
+        languageCode: message.languageCode,
+        imageUrl: message.imageUrl || parsed.imageUrl,
+      };
+    });
 }
 
 export function buildConversationText(

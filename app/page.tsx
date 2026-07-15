@@ -10,6 +10,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
 import LanguageSelector from "@/components/LanguageSelector";
 import {
   DEFAULT_LANGUAGE_CODE,
@@ -33,6 +34,22 @@ type Message = {
   isLoading?: boolean;
 };
 
+type ImageMessagePayload = {
+  type: "bhagya.image";
+  mode: "palmistry";
+  text: string;
+  imageUrl: string;
+  imageName?: string;
+  imageMimeType?: string;
+  imageSize?: number;
+};
+
+type ParsedMessageContent = {
+  text: string;
+  imageUrl?: string;
+  imageName?: string;
+};
+
 type Chat = {
   id: string;
   title: string;
@@ -46,12 +63,17 @@ type BirthDetailsStatus = {
   code?: string;
 };
 
-type LandingStageSize = {
-  scale: number;
-  left: number;
-};
-
 const PENDING_QUESTION_KEY = "bhagya_pending_question_v1";
+const IMAGE_MESSAGE_TYPE = "bhagya.image";
+const PALM_UPLOAD_TEXT = "Palm photo uploaded for analysis.";
+const PALM_LOADING_MESSAGES = [
+  "Detecting life line...",
+  "Reading heart line...",
+  "Examining head line...",
+  "Finding fate line...",
+  "Identifying mounts...",
+  "Preparing your spiritual reading...",
+];
 
 const services: {
   id: ServiceType;
@@ -98,6 +120,61 @@ function makeTitle(text: string) {
   return text.length > 38 ? `${text.slice(0, 38)}…` : text;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function makeImageMessageContent(image: UploadedImage): string {
+  const payload: ImageMessagePayload = {
+    type: IMAGE_MESSAGE_TYPE,
+    mode: "palmistry",
+    text: PALM_UPLOAD_TEXT,
+    imageUrl: image.dataUrl,
+    imageName: image.name,
+    imageMimeType: image.mimeType,
+    imageSize: image.size,
+  };
+
+  return JSON.stringify(payload);
+}
+
+function parseMessageContent(content: string): ParsedMessageContent {
+  if (!content.trim().startsWith("{")) {
+    return { text: content };
+  }
+
+  try {
+    const payload: unknown = JSON.parse(content);
+
+    if (
+      isRecord(payload) &&
+      payload.type === IMAGE_MESSAGE_TYPE &&
+      typeof payload.imageUrl === "string"
+    ) {
+      return {
+        text: typeof payload.text === "string" ? payload.text : "",
+        imageUrl: payload.imageUrl,
+        imageName:
+          typeof payload.imageName === "string" ? payload.imageName : undefined,
+      };
+    }
+  } catch {
+    return { text: content };
+  }
+
+  return { text: content };
+}
+
+function chatHasPalmImage(chat: Chat | undefined) {
+  return Boolean(
+    chat?.messages.some(
+      (message) =>
+        message.service === "palmistry" &&
+        Boolean(parseMessageContent(message.content).imageUrl)
+    )
+  );
+}
+
 function isServiceType(value: unknown): value is ServiceType {
   return (
     value === "astrology" ||
@@ -126,53 +203,6 @@ function getRealisticReplyDelay(answer: string) {
   return baseDelay + readingDelay + randomDelay;
 }
 
-function useLandingStageSize() {
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const [stage, setStage] = useState<LandingStageSize>({
-    scale: 1,
-    left: 0,
-  });
-
-  useEffect(() => {
-    const element = viewportRef.current;
-
-    if (!element) return;
-
-    const update = () => {
-      const width = element.clientWidth;
-      const height = element.clientHeight;
-      const baseWidth = 360;
-      const baseHeight = 800;
-      const widthScale = width / baseWidth;
-      const heightScale = height / baseHeight;
-      const scale = Math.min(widthScale, heightScale, 1.08);
-
-      setStage({
-        scale,
-        left: Math.max(0, (width - baseWidth * scale) / 2),
-      });
-    };
-
-    const observer = new ResizeObserver(update);
-
-    observer.observe(element);
-    window.visualViewport?.addEventListener("resize", update);
-    window.addEventListener("orientationchange", update);
-    update();
-
-    return () => {
-      observer.disconnect();
-      window.visualViewport?.removeEventListener("resize", update);
-      window.removeEventListener("orientationchange", update);
-    };
-  }, []);
-
-  return {
-    viewportRef,
-    ...stage,
-  };
-}
-
 function timeAgo(ts: number, labels: UiText["timeAgo"]) {
   const diff = (Date.now() - ts) / 1000;
   if (diff < 60) return labels.justNow;
@@ -193,6 +223,9 @@ export default function Home() {
   const [hasLoadedLanguage, setHasLoadedLanguage] = useState(false);
   const [question, setQuestion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [palmImage, setPalmImage] = useState<UploadedImage | null>(null);
+  const [isPalmAnalyzing, setIsPalmAnalyzing] = useState(false);
+  const [palmLoadingMessageIndex, setPalmLoadingMessageIndex] = useState(0);
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -209,15 +242,18 @@ export default function Home() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
+  const activeChatHasPalmImage = chatHasPalmImage(activeChat);
   const hasStarted = Boolean(activeChatId);
   const isPreparingBirthProfile = isLoggedIn && isCheckingBirthProfile;
-  const showReferenceMobileLanding =
+  const showMobileLanding =
     !isLoggedIn && !hasStarted && !isPreparingBirthProfile;
   const selectedApi = services.find((s) => s.id === selectedService)?.api;
   const t = UI_TEXT[selectedLanguage];
   const selectedLanguageLabel =
     languages.find((lang) => lang.code === selectedLanguage)?.label ||
     "English";
+  const palmLoadingMessage =
+    PALM_LOADING_MESSAGES[palmLoadingMessageIndex] || PALM_LOADING_MESSAGES[0];
 
   const getAuthHeaders = useCallback(async () => {
     const {
@@ -329,6 +365,18 @@ export default function Home() {
       localStorage.setItem(LANGUAGE_STORAGE_KEY, selectedLanguage);
     }
   }, [hasLoadedLanguage, selectedLanguage]);
+
+  useEffect(() => {
+    if (!isPalmAnalyzing) return;
+
+    const interval = window.setInterval(() => {
+      setPalmLoadingMessageIndex(
+        (current) => (current + 1) % PALM_LOADING_MESSAGES.length
+      );
+    }, 2000);
+
+    return () => window.clearInterval(interval);
+  }, [isPalmAnalyzing]);
 
   useEffect(() => {
     if (isCheckingAuth) return;
@@ -443,8 +491,10 @@ export default function Home() {
   function startNewChat() {
     setActiveChatId(null);
     setQuestion("");
+    setPalmImage(null);
     setSelectedService("astrology");
     setIsLoading(false);
+    setIsPalmAnalyzing(false);
     setIsSidebarOpen(false);
   }
 
@@ -454,7 +504,9 @@ export default function Home() {
     setChats([]);
     setActiveChatId(null);
     setQuestion("");
+    setPalmImage(null);
     setIsLoading(false);
+    setIsPalmAnalyzing(false);
     setIsSidebarOpen(false);
   }
 
@@ -784,10 +836,204 @@ export default function Home() {
     }
   }
 
+  async function handlePalmAnalyze(image: UploadedImage) {
+    if (isCheckingAuth || isCheckingBirthProfile || isLoading) return;
+
+    if (!isLoggedIn) {
+      router.push("/login?next=/");
+      return;
+    }
+
+    if (!hasCompleteBirthProfile) {
+      router.replace("/birth-details");
+      return;
+    }
+
+    const headers = await getAuthHeaders();
+
+    if (!headers) {
+      setIsLoggedIn(false);
+      router.push("/login?next=/");
+      return;
+    }
+
+    const service: ServiceType = "palmistry";
+    const cleanQuestion = PALM_UPLOAD_TEXT;
+    const imageContent = makeImageMessageContent(image);
+
+    setSelectedService(service);
+    setPalmLoadingMessageIndex(0);
+    setIsLoading(true);
+    setIsPalmAnalyzing(true);
+
+    let chatId = activeChatId;
+    let workingChat = chatId
+      ? chats.find((chat) => chat.id === chatId) || null
+      : null;
+
+    if (!chatId) {
+      const newChat = await createServerChat({
+        title: "Palmistry Reading",
+        service,
+        languageCode: selectedLanguage,
+      });
+
+      if (!newChat) {
+        setIsLoading(false);
+        setIsPalmAnalyzing(false);
+        return;
+      }
+
+      chatId = newChat.id;
+      workingChat = newChat;
+      setActiveChatId(chatId);
+      setChats((prev) => [newChat, ...prev]);
+    }
+
+    if (!chatId) {
+      setIsLoading(false);
+      setIsPalmAnalyzing(false);
+      return;
+    }
+
+    const userMessageId = makeId();
+    const assistantMessageId = makeId();
+
+    const userMessage: Message = {
+      id: userMessageId,
+      role: "user",
+      content: imageContent,
+      service,
+      languageCode: selectedLanguage,
+    };
+
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: t.consulting,
+      service,
+      languageCode: selectedLanguage,
+      isLoading: true,
+    };
+
+    setActiveChatId(chatId);
+
+    setChats((prev) => {
+      const existing = prev.find((c) => c.id === chatId);
+
+      if (!existing) {
+        const newChat: Chat = {
+          id: chatId,
+          title: "Palmistry Reading",
+          service,
+          updatedAt: Date.now(),
+          messages: [userMessage, assistantMessage],
+        };
+
+        return [newChat, ...prev];
+      }
+
+      const updated: Chat = {
+        ...existing,
+        service,
+        updatedAt: Date.now(),
+        messages: [...existing.messages, userMessage, assistantMessage],
+      };
+
+      return [updated, ...prev.filter((c) => c.id !== chatId)];
+    });
+
+    await saveServerMessage({
+      chatId,
+      role: "user",
+      content: imageContent,
+      service,
+      languageCode: selectedLanguage,
+    });
+
+    const conversationHistory = [
+      ...(workingChat?.messages || [])
+        .filter((message) => !message.isLoading)
+        .map((message) => ({
+          role: message.role,
+          content: message.content,
+          service: message.service,
+          languageCode: message.languageCode,
+        })),
+      {
+        role: "user",
+        content: imageContent,
+        service,
+        languageCode: selectedLanguage,
+        imageUrl: image.dataUrl,
+      },
+    ];
+
+    try {
+      const minimumDelay = sleep(3500 + Math.floor(Math.random() * 1200));
+      const responsePromise = fetch("/api/palmistry", {
+        method: "POST",
+        headers: {
+          ...headers,
+          "X-Bhagya-Skip-Persistence": "true",
+        },
+        body: JSON.stringify({
+          chatId,
+          service,
+          question: cleanQuestion,
+          messages: conversationHistory,
+          palmImage: image.dataUrl,
+          language: selectedLanguageLabel,
+          languageCode: selectedLanguage,
+        }),
+      });
+
+      const [res] = await Promise.all([responsePromise, minimumDelay]);
+
+      if (res.status === 401) {
+        router.push("/login?next=/");
+        return;
+      }
+
+      const data = await res.json();
+      const finalAnswer = data.answer || t.silentError;
+
+      updateAssistantMessage(chatId, assistantMessageId, finalAnswer);
+      setPalmImage(null);
+
+      await saveServerMessage({
+        chatId,
+        role: "assistant",
+        content: finalAnswer,
+        service,
+        languageCode: selectedLanguage,
+      });
+
+      await loadUserChats();
+    } catch {
+      await sleep(1200);
+
+      updateAssistantMessage(chatId, assistantMessageId, t.cosmicError);
+
+      await saveServerMessage({
+        chatId,
+        role: "assistant",
+        content: t.cosmicError,
+        service,
+        languageCode: selectedLanguage,
+      });
+    } finally {
+      setIsLoading(false);
+      setIsPalmAnalyzing(false);
+      setPalmLoadingMessageIndex(0);
+    }
+  }
+
   async function selectChat(chat: Chat) {
     setActiveChatId(chat.id);
     setSelectedService(chat.service);
     setQuestion("");
+    setPalmImage(null);
     setIsSidebarOpen(false);
 
     const headers = await getAuthHeaders();
@@ -829,7 +1075,7 @@ export default function Home() {
       {/* ── Mandala background ── */}
       <div
         className={`pointer-events-none fixed inset-0 z-0 overflow-hidden ${
-          showReferenceMobileLanding ? "hidden min-[600px]:block" : ""
+          showMobileLanding ? "hidden min-[600px]:block" : ""
         }`}
       >
         <div className="bhagya-mandala-stage absolute left-1/2">
@@ -876,13 +1122,13 @@ export default function Home() {
 
       {/* ── Subtle star field only, no floating constellations ── */}
       <StarField
-        className={showReferenceMobileLanding ? "hidden min-[600px]:block" : ""}
+        className={showMobileLanding ? "hidden min-[600px]:block" : ""}
       />
 
       {/* ── Subtle vignette overlay ── */}
       <div
         className={`pointer-events-none absolute inset-0 z-0 ${
-          showReferenceMobileLanding ? "hidden min-[600px]:block" : ""
+          showMobileLanding ? "hidden min-[600px]:block" : ""
         }`}
         style={{
           background:
@@ -1083,6 +1329,10 @@ export default function Home() {
             setSelectedService={setSelectedService}
             selectedLanguage={selectedLanguage}
             setSelectedLanguage={setSelectedLanguage}
+            palmImage={palmImage}
+            setPalmImage={setPalmImage}
+            handlePalmAnalyze={handlePalmAnalyze}
+            isPalmAnalyzing={isPalmAnalyzing}
             t={t}
           />
         </div>
@@ -1174,29 +1424,45 @@ export default function Home() {
                 </span>
               </div>
 
-              {/* Headline */}
-              <div className="mb-7 text-center">
-                <h1 className="mb-4 text-center text-[36px] font-semibold leading-[1.12] tracking-[-0.03em] text-white/95 sm:text-[38px] md:text-[42px]">
-                  {t.headlineLine1}
-                  <br />
-                  <span className="text-sky-300">{t.headlineLine2}</span>
-                </h1>
-                <p className="mx-auto max-w-[330px] text-center text-[15px] leading-6 text-white/50 sm:text-base">
-                  {t.subtitle}
-                </p>
-              </div>
+              {selectedService === "palmistry" ? (
+                <ImageUploader
+                  mode="palmistry"
+                  accept="image/*"
+                  maxSize={10}
+                  allowCamera
+                  value={palmImage}
+                  onChange={setPalmImage}
+                  onAnalyze={handlePalmAnalyze}
+                  isAnalyzing={isPalmAnalyzing}
+                  disabled={isLoading || isCheckingAuth}
+                />
+              ) : (
+                <>
+                  {/* Headline */}
+                  <div className="mb-7 text-center">
+                    <h1 className="mb-4 text-center text-[36px] font-semibold leading-[1.12] tracking-[-0.03em] text-white/95 sm:text-[38px] md:text-[42px]">
+                      {t.headlineLine1}
+                      <br />
+                      <span className="text-sky-300">{t.headlineLine2}</span>
+                    </h1>
+                    <p className="mx-auto max-w-[330px] text-center text-[15px] leading-6 text-white/50 sm:text-base">
+                      {t.subtitle}
+                    </p>
+                  </div>
 
-              {/* Input */}
-              <ChatInput
-                question={question}
-                setQuestion={setQuestion}
-                handleAsk={handleAsk}
-                isLoading={isLoading || isCheckingAuth}
-                inputRef={inputRef}
-                placeholder={t.inputPlaceholder}
-                askLabel={t.ask}
-                attachLabel={t.attach}
-              />
+                  {/* Input */}
+                  <ChatInput
+                    question={question}
+                    setQuestion={setQuestion}
+                    handleAsk={handleAsk}
+                    isLoading={isLoading || isCheckingAuth}
+                    inputRef={inputRef}
+                    placeholder={t.inputPlaceholder}
+                    askLabel={t.ask}
+                    attachLabel={t.attach}
+                  />
+                </>
+              )}
 
               {/* Service tabs */}
               <ServiceTabs
@@ -1446,7 +1712,11 @@ export default function Home() {
                       )}
 
                       <div
-                        className={`rounded-2xl px-4 py-3 text-[15px] leading-6 sm:text-[15px] ${
+                        className={`rounded-2xl ${
+                          parseMessageContent(message.content).imageUrl
+                            ? "p-2"
+                            : "px-4 py-3"
+                        } text-[15px] leading-6 sm:text-[15px] ${
                           message.role === "user"
                             ? "text-white"
                             : "border border-white/[0.08] text-white/82"
@@ -1473,9 +1743,7 @@ export default function Home() {
                             </span>
                           </div>
                         ) : (
-                          <p className="whitespace-pre-wrap">
-                            {message.content}
-                          </p>
+                          <MessageContent message={message} />
                         )}
                       </div>
                     </div>
@@ -1506,16 +1774,30 @@ export default function Home() {
 
               {/* Input bar */}
               <div className="mx-auto max-w-2xl px-3 pb-3 pt-2.5 sm:pb-4">
-                <ChatInput
-                  question={question}
-                  setQuestion={setQuestion}
-                  handleAsk={handleAsk}
-                  isLoading={isLoading || isCheckingAuth}
-                  inputRef={inputRef}
-                  placeholder={t.followupPlaceholder}
-                  askLabel={t.ask}
-                  attachLabel={t.attach}
-                />
+                {selectedService === "palmistry" && !activeChatHasPalmImage ? (
+                  <ImageUploader
+                    mode="palmistry"
+                    accept="image/*"
+                    maxSize={10}
+                    allowCamera
+                    value={palmImage}
+                    onChange={setPalmImage}
+                    onAnalyze={handlePalmAnalyze}
+                    isAnalyzing={isPalmAnalyzing}
+                    disabled={isLoading || isCheckingAuth}
+                  />
+                ) : (
+                  <ChatInput
+                    question={question}
+                    setQuestion={setQuestion}
+                    handleAsk={handleAsk}
+                    isLoading={isLoading || isCheckingAuth}
+                    inputRef={inputRef}
+                    placeholder={t.followupPlaceholder}
+                    askLabel={t.ask}
+                    attachLabel={t.attach}
+                  />
+                )}
               </div>
             </div>
           </section>
@@ -1523,6 +1805,8 @@ export default function Home() {
       )}
 
       {/* ── Global styles & keyframes ── */}
+      {isPalmAnalyzing && <PalmAnalysisLoading message={palmLoadingMessage} />}
+
       <style>{`
         @keyframes spinCW {
           from { transform: rotate(0deg); }
@@ -1611,6 +1895,88 @@ export default function Home() {
 }
 
 /* ── Rail icon wrapper ── */
+function MessageContent({ message }: { message: Message }) {
+  const parsed = parseMessageContent(message.content);
+
+  if (parsed.imageUrl) {
+    return (
+      <div className="w-[220px] max-w-[70vw] sm:w-[280px]">
+        <div className="overflow-hidden rounded-xl bg-black/20">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={parsed.imageUrl}
+            alt={parsed.imageName || "Uploaded palm image"}
+            className="max-h-[330px] w-full object-cover"
+          />
+        </div>
+        {parsed.text && (
+          <p className="px-1.5 pb-1 pt-2 text-[12px] leading-5 text-white/82">
+            {parsed.text}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return <p className="whitespace-pre-wrap">{message.content}</p>;
+}
+
+function PalmAnalysisLoading({ message }: { message: string }) {
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#020817]/82 px-5 backdrop-blur-2xl">
+      <div
+        className="relative w-full max-w-[390px] overflow-hidden rounded-[28px] border border-white/[0.10] p-7 text-center"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.045))",
+          boxShadow:
+            "0 24px 80px rgba(0,0,0,0.48), 0 0 48px rgba(56,189,248,0.18)",
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-32 opacity-80"
+          style={{
+            background:
+              "radial-gradient(circle at 50% 0%, rgba(56,189,248,0.24), transparent 62%)",
+          }}
+        />
+
+        <div className="relative mx-auto flex h-24 w-24 items-center justify-center">
+          <div className="absolute inset-0 rounded-full border border-sky-300/20" />
+          <div className="absolute inset-2 rounded-full border border-sky-300/30 border-t-sky-200/90 animate-spin" />
+          <div className="absolute inset-5 rounded-full bg-sky-300/[0.10] blur-sm" />
+          <span className="relative text-3xl">+</span>
+        </div>
+
+        <h2 className="relative mt-5 text-[24px] font-semibold tracking-tight text-white/95">
+          Analyzing Your Palm...
+        </h2>
+        <p className="relative mt-3 min-h-6 text-[14px] text-sky-100/72">
+          {message}
+        </p>
+
+        <div className="relative mt-6 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: "46%",
+              background: "linear-gradient(90deg, #38bdf8, #1d4ed8)",
+              animation: "analysisBar 1.4s ease-in-out infinite alternate",
+            }}
+          />
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes analysisBar {
+          from { transform: translateX(-18%); }
+          to { transform: translateX(136%); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 function UniversalMobileLanding({
   question,
   setQuestion,
@@ -1621,6 +1987,10 @@ function UniversalMobileLanding({
   setSelectedService,
   selectedLanguage,
   setSelectedLanguage,
+  palmImage,
+  setPalmImage,
+  handlePalmAnalyze,
+  isPalmAnalyzing,
   t,
 }: {
   question: string;
@@ -1632,9 +2002,12 @@ function UniversalMobileLanding({
   setSelectedService: (service: ServiceType) => void;
   selectedLanguage: LanguageCode;
   setSelectedLanguage: (language: LanguageCode) => void;
+  palmImage: UploadedImage | null;
+  setPalmImage: (image: UploadedImage | null) => void;
+  handlePalmAnalyze: (image: UploadedImage) => void;
+  isPalmAnalyzing: boolean;
   t: UiText;
 }) {
-  const { viewportRef, scale, left } = useLandingStageSize();
   const isEnglish = selectedLanguage === "english";
   const badge = isEnglish
     ? "Astrology \u00b7 Numerology \u00b7 Tarot \u00b7 Palmistry"
@@ -1644,79 +2017,88 @@ function UniversalMobileLanding({
     : t.inputPlaceholder;
 
   return (
-    <div className="bhagya-universal-screen">
-      <div className="bhagya-universal-viewport">
-        <div ref={viewportRef} className="bhagya-universal-measure">
-          <div
-            className="bhagya-reference-stage"
-            style={{
-              transform: `translate3d(${left}px, 0, 0) scale(${scale})`,
-            }}
+    <div className="bhagya-mobile-landing">
+      <MobileLandingBackground />
+
+      <header className="bhagya-mobile-header">
+        <Link href="/" className="bhagya-mobile-brand">
+          <div className="bhagya-mobile-logo">
+            <span className="text-lg">*</span>
+          </div>
+
+          <div className="min-w-0">
+            <p className="bhagya-mobile-brand-title">{t.appName}</p>
+            <p className="bhagya-mobile-brand-subtitle">{t.tagline}</p>
+          </div>
+        </Link>
+
+        <div className="bhagya-mobile-actions">
+          <div className="bhagya-mobile-language">
+            <LanguageSelector
+              selectedLanguage={selectedLanguage}
+              setSelectedLanguage={setSelectedLanguage}
+            />
+          </div>
+
+          <Link href="/login" className="bhagya-mobile-signin">
+            {t.signIn}
+          </Link>
+        </div>
+      </header>
+
+      <main className="bhagya-mobile-main">
+        <section className="bhagya-mobile-hero">
+          <div className="bhagya-mobile-badge">
+            <span className="bhagya-mobile-badge-dot" />
+            {badge}
+          </div>
+
+          <h1
+            className={`bhagya-mobile-title ${
+              isEnglish ? "" : "bhagya-mobile-title-translated"
+            }`}
           >
-            <ReferenceLandingBackground />
+            <span className={isEnglish ? "block whitespace-nowrap" : "block"}>
+              {t.headlineLine1}
+            </span>
+            <span
+              className={
+                isEnglish
+                  ? "block whitespace-nowrap text-sky-300"
+                  : "block text-sky-300"
+              }
+            >
+              {t.headlineLine2}
+            </span>
+          </h1>
 
-            <header className="bhagya-reference-header">
-              <Link href="/" className="bhagya-reference-brand">
-                <div className="bhagya-reference-logo">
-                  <span className="text-base">*</span>
-                </div>
+          {selectedService === "palmistry" ? (
+            <div className="mt-6">
+              <ImageUploader
+                mode="palmistry"
+                accept="image/*"
+                maxSize={10}
+                allowCamera
+                value={palmImage}
+                onChange={setPalmImage}
+                onAnalyze={handlePalmAnalyze}
+                isAnalyzing={isPalmAnalyzing}
+                disabled={isLoading}
+              />
+            </div>
+          ) : (
+            <>
+              <p className="bhagya-mobile-subtitle">{t.subtitle}</p>
 
-                <div className="min-w-0">
-                  <p className="bhagya-reference-brand-title">{t.appName}</p>
-                  <p className="bhagya-reference-brand-subtitle">
-                    {t.tagline}
-                  </p>
-                </div>
-              </Link>
-
-              <div className="bhagya-reference-actions">
-                <div className="bhagya-reference-language">
-                  <LanguageSelector
-                    selectedLanguage={selectedLanguage}
-                    setSelectedLanguage={setSelectedLanguage}
-                  />
-                </div>
-
-                <Link href="/login" className="bhagya-reference-signin">
-                  {t.signIn}
-                </Link>
-              </div>
-            </header>
-
-            <section className="bhagya-reference-hero">
-              <div className="bhagya-reference-badge">
-                <span className="bhagya-reference-badge-dot" />
-                {badge}
-              </div>
-
-              <h1
-                className={`bhagya-reference-title ${
-                  isEnglish ? "" : "bhagya-reference-title-translated"
-                }`}
-              >
-                <span className={`block ${isEnglish ? "whitespace-nowrap" : ""}`}>
-                  {t.headlineLine1}
-                </span>
-                <span
-                  className={`block text-sky-300 ${
-                    isEnglish ? "whitespace-nowrap" : ""
-                  }`}
-                >
-                  {t.headlineLine2}
-                </span>
-              </h1>
-
-              <p className="bhagya-reference-subtitle">{t.subtitle}</p>
-
-              <div className="bhagya-reference-input">
+              <div className="bhagya-mobile-input">
                 <button
                   type="button"
-                  className="bhagya-reference-plus"
+                  className="bhagya-mobile-plus"
                   aria-label={t.attach}
                 >
                   <svg
-                    width="17"
-                    height="17"
+                    width="18"
+                    height="18"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -1737,71 +2119,62 @@ function UniversalMobileLanding({
                     if (event.key === "Enter" && !event.shiftKey) handleAsk();
                   }}
                   placeholder={inputPlaceholder}
-                  className="bhagya-reference-input-field"
+                  className="bhagya-mobile-input-field"
                 />
 
                 <button
                   type="button"
                   onClick={handleAsk}
                   disabled={isLoading}
-                  className="bhagya-reference-ask disabled:cursor-not-allowed disabled:opacity-65"
+                  className="bhagya-mobile-ask disabled:cursor-not-allowed disabled:opacity-65"
                 >
                   {isLoading ? <LoadingDots /> : t.ask}
                 </button>
               </div>
+            </>
+          )}
 
-              <div className="bhagya-reference-services">
-                {services.map((service) => {
-                  const active = selectedService === service.id;
+          <div className="bhagya-mobile-services">
+            {services.map((service) => {
+              const active = selectedService === service.id;
 
-                  return (
-                    <button
-                      key={service.id}
-                      type="button"
-                      onClick={() => setSelectedService(service.id)}
-                      className={`bhagya-reference-service ${
-                        active ? "bhagya-reference-service-active" : ""
-                      }`}
-                    >
-                      <span>{service.glyph}</span>
-                      {t.services[service.id]}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+              return (
+                <button
+                  key={service.id}
+                  type="button"
+                  onClick={() => setSelectedService(service.id)}
+                  className={`bhagya-mobile-service-button ${
+                    active ? "bhagya-mobile-service-active" : ""
+                  }`}
+                >
+                  <span>{service.glyph}</span>
+                  {t.services[service.id]}
+                </button>
+              );
+            })}
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }
 
-function ReferenceLandingBackground() {
+function MobileLandingBackground() {
   return (
     <>
       <StarField />
 
-      <div className="bhagya-reference-mandala-stage">
-        <div className="bhagya-mandala-center bhagya-orbit-outer-shell">
-          <div className="bhagya-orbit bhagya-orbit-outer" />
+      <div className="bhagya-mobile-mandala-stage" aria-hidden="true">
+        <div className="bhagya-mobile-orbit bhagya-mobile-orbit-outer" />
+        <div className="bhagya-mobile-orbit bhagya-mobile-orbit-inner" />
+        <div className="bhagya-mobile-mandala-shell">
+          <div className="bhagya-mobile-mandala-image" />
         </div>
-
-        <div className="bhagya-mandala-center bhagya-orbit-inner-shell">
-          <div className="bhagya-orbit bhagya-orbit-inner" />
-        </div>
-
-        <div className="bhagya-mandala-center bhagya-image-shell">
-          <div className="bhagya-mandala-image" />
-        </div>
-
-        <div className="bhagya-mandala-center bhagya-glow-shell">
-          <div className="bhagya-mandala-glow" />
-        </div>
+        <div className="bhagya-mobile-mandala-glow" />
       </div>
 
       <div
-        className="pointer-events-none absolute inset-0 z-[1]"
+        className="pointer-events-none absolute inset-0 z-[2]"
         style={{
           background:
             "radial-gradient(ellipse at center, transparent 30%, rgba(2,8,23,0.72) 100%)",

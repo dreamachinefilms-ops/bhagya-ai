@@ -20,6 +20,7 @@ create table if not exists public.user_birth_details (
   latitude numeric,
   longitude numeric,
   timezone_offset text,
+  timezone_id text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );

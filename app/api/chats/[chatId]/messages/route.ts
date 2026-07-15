@@ -20,12 +20,34 @@ const allowedServices: BhagyaService[] = [
   "palmistry",
 ];
 const allowedRoles: MessageRole[] = ["user", "assistant"];
+const MAX_TEXT_MESSAGE_LENGTH = 6000;
+const MAX_IMAGE_MESSAGE_LENGTH = 15 * 1024 * 1024;
 
 function unauthorizedResponse() {
   return NextResponse.json(
     { error: "UNAUTHORIZED", message: "Please login to continue." },
     { status: 401 }
   );
+}
+
+function isImageMessageContent(content: string) {
+  if (!content.startsWith("{")) return false;
+
+  try {
+    const payload: unknown = JSON.parse(content);
+
+    return Boolean(
+      payload &&
+        typeof payload === "object" &&
+        !Array.isArray(payload) &&
+        "type" in payload &&
+        payload.type === "bhagya.image" &&
+        "imageUrl" in payload &&
+        typeof payload.imageUrl === "string"
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function GET(
@@ -123,7 +145,11 @@ export async function POST(
       );
     }
 
-    if (content.length > 6000) {
+    const maxContentLength = isImageMessageContent(content)
+      ? MAX_IMAGE_MESSAGE_LENGTH
+      : MAX_TEXT_MESSAGE_LENGTH;
+
+    if (content.length > maxContentLength) {
       return NextResponse.json(
         {
           error: "BAD_REQUEST",
