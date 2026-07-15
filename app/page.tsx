@@ -328,6 +328,54 @@ function getTarotSessionErrorMessage(payload: Record<string, unknown>) {
     : "The cards could not be prepared. Please check your connection.";
 }
 
+function getTarotPreviewSpread(question: string, spreadType: TarotSpreadType) {
+  if (spreadType === "one-card") {
+    return {
+      spreadName: "Guidance",
+      positions: ["Guidance"],
+      availableCount: 10,
+    };
+  }
+
+  if (/\b(career|job|work|business|profession|promotion|office)\b/i.test(question)) {
+    return {
+      spreadName: "Career Guidance",
+      positions: ["Current Path", "Challenge or Opportunity", "Guidance"],
+      availableCount: 15,
+    };
+  }
+
+  if (/\b(love|relationship|marriage|partner|ex|crush|connection)\b/i.test(question)) {
+    return {
+      spreadName: "Relationship Mirror",
+      positions: ["Your Energy", "Other Energy", "Connection"],
+      availableCount: 15,
+    };
+  }
+
+  if (/\b(decision|choose|choice|option|should i|what should)\b/i.test(question)) {
+    return {
+      spreadName: "Decision Path",
+      positions: ["Current Situation", "What to Consider", "Likely Direction"],
+      availableCount: 15,
+    };
+  }
+
+  if (/\b(growth|healing|self|personal|pattern|spiritual|improve)\b/i.test(question)) {
+    return {
+      spreadName: "Personal Growth",
+      positions: ["Current Pattern", "What Needs Attention", "Growth Direction"],
+      availableCount: 15,
+    };
+  }
+
+  return {
+    spreadName: "Past, Present, Direction",
+    positions: ["Past Influence", "Present Energy", "Likely Direction"],
+    availableCount: 15,
+  };
+}
+
 function chatHasPalmStoragePath(chat: Chat | undefined, storagePath: string) {
   return Boolean(
     chat?.messages.some(
@@ -916,7 +964,7 @@ export default function Home() {
   async function handleTarotStart() {
     const cleanQuestion = tarotQuestion.trim() || "General tarot guidance";
 
-    if (isCheckingAuth || isLoading || tarotStatus === "shuffling") return;
+    if (isCheckingAuth || isLoading) return;
 
     if (!isLoggedIn) {
       localStorage.setItem(PENDING_QUESTION_KEY, cleanQuestion);
@@ -935,7 +983,21 @@ export default function Home() {
 
     setSelectedService("tarot");
     setTarotError("");
-    setTarotStatus("shuffling");
+    const previewSpread = getTarotPreviewSpread(cleanQuestion, tarotSpreadType);
+    setTarotQuestion(cleanQuestion);
+    setTarotSession({
+      id: "pending",
+      spreadType: tarotSpreadType,
+      spreadName: previewSpread.spreadName,
+      selectionCount: previewSpread.positions.length,
+      availablePositions: Array.from(
+        { length: previewSpread.availableCount },
+        (_, index) => index
+      ),
+      spreadPositions: previewSpread.positions,
+    });
+    setTarotSelectedIndexes([]);
+    setTarotStatus("selecting");
     setIsLoading(true);
 
     let chatId = activeChatId;
@@ -957,6 +1019,8 @@ export default function Home() {
 
       if (!newChat) {
         setTarotError("Could not create a Tarot chat. Please try again.");
+        setTarotSession(null);
+        setTarotSelectedIndexes([]);
         setTarotStatus("asking");
         setIsLoading(false);
         return;
@@ -970,6 +1034,8 @@ export default function Home() {
 
     if (!chatId || !workingChat) {
       setTarotError("Could not prepare your Tarot reading. Please try again.");
+      setTarotSession(null);
+      setTarotSelectedIndexes([]);
       setTarotStatus("asking");
       setIsLoading(false);
       return;
@@ -1046,6 +1112,8 @@ export default function Home() {
           ? error.message
           : "The cards could not be prepared. Please check your connection."
       );
+      setTarotSession(null);
+      setTarotSelectedIndexes([]);
       setTarotStatus("asking");
     } finally {
       setIsLoading(false);
@@ -2983,19 +3051,19 @@ function TarotMandalaIcon() {
     <svg
       viewBox="0 0 120 120"
       aria-hidden="true"
-      className="h-[52%] w-[52%] drop-shadow-[0_0_18px_rgba(245,158,11,0.28)]"
+      className="h-[52%] w-[52%] drop-shadow-[0_0_18px_rgba(34,199,242,0.32)]"
       fill="none"
     >
-      <circle cx="60" cy="60" r="39" stroke="rgba(251,191,36,0.44)" strokeWidth="1.2" />
+      <circle cx="60" cy="60" r="39" stroke="rgba(125,211,252,0.44)" strokeWidth="1.2" />
       <circle cx="60" cy="60" r="25" stroke="rgba(224,242,254,0.24)" strokeWidth="1" />
-      <circle cx="60" cy="60" r="7" fill="rgba(251,191,36,0.2)" stroke="rgba(254,243,199,0.72)" />
+      <circle cx="60" cy="60" r="7" fill="rgba(34,199,242,0.18)" stroke="rgba(224,242,254,0.72)" />
       {Array.from({ length: 12 }).map((_, index) => (
         <g key={index} transform={`rotate(${index * 30} 60 60)`}>
           <path
             d="M60 21 C66 36 66 44 60 54 C54 44 54 36 60 21Z"
-            stroke="rgba(252,211,77,0.56)"
+            stroke="rgba(125,211,252,0.56)"
             strokeWidth="1"
-            fill="rgba(245,158,11,0.08)"
+            fill="rgba(34,199,242,0.08)"
           />
           <path
             d="M60 33 C64 43 64 50 60 57 C56 50 56 43 60 33Z"
@@ -3008,13 +3076,13 @@ function TarotMandalaIcon() {
         <g key={`ray-${index}`} transform={`rotate(${index * 45} 60 60)`}>
           <path
             d="M60 13 L62.5 25 L60 31 L57.5 25 Z"
-            fill="rgba(251,191,36,0.14)"
-            stroke="rgba(254,243,199,0.32)"
+            fill="rgba(34,199,242,0.14)"
+            stroke="rgba(224,242,254,0.32)"
             strokeWidth="0.8"
           />
         </g>
       ))}
-      <circle cx="60" cy="60" r="48" stroke="rgba(251,191,36,0.16)" strokeDasharray="2 8" />
+      <circle cx="60" cy="60" r="48" stroke="rgba(34,199,242,0.16)" strokeDasharray="2 8" />
     </svg>
   );
 }
@@ -3037,28 +3105,27 @@ function TarotCardBack({
       }`}
       style={{
         background:
-          "radial-gradient(circle at 50% 30%, rgba(245,158,11,0.22), transparent 31%), radial-gradient(circle at 50% 82%, rgba(79,70,229,0.22), transparent 36%), linear-gradient(155deg, #12101f 0%, #070b1c 56%, #02040d 100%)",
+          "radial-gradient(circle at 50% 30%, rgba(34,199,242,0.18), transparent 31%), radial-gradient(circle at 50% 82%, rgba(37,99,235,0.18), transparent 36%), linear-gradient(155deg, #0b1324 0%, #07101f 56%, #020817 100%)",
         boxShadow: selected
-          ? "inset 0 1px 0 rgba(255,255,255,0.16), inset 0 0 34px rgba(245,158,11,0.18), 0 18px 48px rgba(245,158,11,0.2)"
-          : "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 28px rgba(245,158,11,0.08), 0 12px 30px rgba(2,8,23,0.4)",
+          ? "inset 0 1px 0 rgba(255,255,255,0.16), inset 0 0 34px rgba(34,199,242,0.16), 0 18px 48px rgba(37,99,235,0.22)"
+          : "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 28px rgba(34,199,242,0.08), 0 12px 30px rgba(2,8,23,0.4)",
       }}
     >
-      <span className="absolute inset-[6px] rounded-[11px] border border-amber-200/24" />
+      <span className="absolute inset-[6px] rounded-[11px] border border-sky-200/22" />
       <span className="absolute inset-[12px] rounded-[8px] border border-white/[0.08]" />
-      <span className="absolute left-1/2 top-3 h-px w-10 -translate-x-1/2 rounded-full bg-amber-200/45" />
-      <span className="absolute bottom-3 left-1/2 h-px w-10 -translate-x-1/2 rounded-full bg-amber-200/45" />
+      <span className="absolute left-1/2 top-3 h-px w-10 -translate-x-1/2 rounded-full bg-sky-200/45" />
+      <span className="absolute bottom-3 left-1/2 h-px w-10 -translate-x-1/2 rounded-full bg-sky-200/45" />
       <span className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(255,255,255,0.09),transparent_20%),linear-gradient(115deg,transparent_18%,rgba(255,255,255,0.075)_43%,transparent_62%)] opacity-60 transition group-hover:opacity-85" />
-      <span className="absolute inset-0 opacity-[0.08] [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.75)_1px,transparent_0)] [background-size:10px_10px]" />
       <span className="absolute inset-0 flex items-center justify-center">
         <TarotMandalaIcon />
       </span>
       {!compact && (
-        <span className="absolute inset-x-0 bottom-[17%] text-center text-[9px] font-semibold uppercase tracking-[0.22em] text-amber-100/42 sm:text-[10px]">
+        <span className="absolute inset-x-0 bottom-[17%] text-center text-[9px] font-semibold uppercase tracking-[0.22em] text-sky-100/42 sm:text-[10px]">
         Bhagya
         </span>
       )}
       {selected && (
-        <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-amber-100/60 bg-amber-300/20 text-[11px] font-semibold text-amber-50 shadow-[0_0_18px_rgba(245,158,11,0.34)]">
+        <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-sky-100/60 bg-sky-300/20 text-[11px] font-semibold text-white shadow-[0_0_18px_rgba(34,199,242,0.34)]">
           {selectionNumber}
         </span>
       )}
@@ -3091,7 +3158,7 @@ function TarotHeader({
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-amber-200/70">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-sky-200/70">
           Bhagya Tarot
         </p>
         <h2 className="mt-2 text-[24px] font-semibold leading-[1.15] text-white sm:text-[30px]">
@@ -3111,9 +3178,9 @@ function TarotHeader({
           type="button"
           onClick={onReset}
           disabled={isLoading}
-          className="inline-flex min-h-10 flex-shrink-0 items-center gap-2 rounded-full border border-amber-100/14 bg-white/[0.035] px-3 text-xs font-medium text-white/58 transition hover:border-amber-200/35 hover:bg-amber-300/8 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex min-h-10 flex-shrink-0 items-center gap-2 rounded-full border border-sky-100/14 bg-white/[0.035] px-3 text-xs font-medium text-white/58 transition hover:border-sky-300/35 hover:bg-sky-300/8 hover:text-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span className="text-amber-200/70">↺</span>
+          <span className="text-sky-200/70">↺</span>
           Reset
         </button>
       )}
@@ -3153,7 +3220,7 @@ function IntentionInput({
   return (
     <div className="space-y-3">
       <div className="relative">
-        <div className="pointer-events-none absolute left-4 top-4 text-amber-200/45">
+        <div className="pointer-events-none absolute left-4 top-4 text-sky-200/45">
           <TarotSparkleIcon />
         </div>
         <textarea
@@ -3161,7 +3228,7 @@ function IntentionInput({
           onChange={(event) => setQuestion(event.target.value)}
           placeholder="Ask about love, work, money, a decision, or what lies ahead..."
           rows={3}
-          className="min-h-[132px] w-full resize-none rounded-[22px] border border-amber-100/14 bg-black/24 px-12 py-4 text-[15px] leading-7 text-white outline-none shadow-[inset_0_0_38px_rgba(245,158,11,0.045)] transition placeholder:text-white/30 focus:border-amber-200/45 focus:shadow-[inset_0_0_42px_rgba(245,158,11,0.08),0_0_0_1px_rgba(245,158,11,0.16)]"
+          className="min-h-[132px] w-full resize-none rounded-[22px] border border-sky-100/14 bg-[#07101f] px-12 py-4 text-[15px] leading-7 text-white outline-none shadow-[inset_0_0_38px_rgba(34,199,242,0.045)] transition placeholder:text-white/35 focus:border-sky-300/45 focus:shadow-[inset_0_0_42px_rgba(34,199,242,0.08),0_0_0_1px_rgba(34,199,242,0.16)]"
         />
       </div>
 
@@ -3176,8 +3243,8 @@ function IntentionInput({
               onClick={() => chooseSuggestion(topic)}
               className={`min-h-10 rounded-full border px-3.5 text-xs font-medium transition ${
                 active
-                  ? "border-amber-200/55 bg-amber-300/10 text-amber-100 shadow-[0_0_24px_rgba(245,158,11,0.12)]"
-                  : "border-white/10 bg-white/[0.035] text-white/58 hover:border-amber-200/35 hover:text-amber-100"
+                  ? "border-sky-300/55 bg-sky-300/10 text-sky-100 shadow-[0_0_24px_rgba(34,199,242,0.12)]"
+                  : "border-white/10 bg-white/[0.035] text-white/62 hover:border-sky-300/35 hover:text-sky-100"
               }`}
             >
               {topic}
@@ -3209,11 +3276,11 @@ function SpreadSelector({
             onClick={() => setSpreadType(spread)}
             className={`group relative min-h-[132px] overflow-hidden rounded-[22px] border p-4 text-left transition duration-200 ${
               selected
-                ? "border-amber-200/55 bg-amber-300/10 text-white shadow-[0_18px_48px_rgba(245,158,11,0.13)]"
-                : "border-white/[0.09] bg-white/[0.035] text-white/70 hover:border-amber-200/30 hover:bg-white/[0.055]"
+                ? "border-sky-300/55 bg-sky-400/10 text-white shadow-[0_18px_48px_rgba(34,199,242,0.13)]"
+                : "border-white/[0.09] bg-white/[0.035] text-white/74 hover:border-sky-300/30 hover:bg-white/[0.055]"
             }`}
           >
-            <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(245,158,11,0.14),transparent_34%)] opacity-75" />
+            <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(34,199,242,0.12),transparent_34%)] opacity-75" />
             <span className="relative flex items-start justify-between gap-3">
               <span>
                 <span className="mb-3 flex h-10 items-center">
@@ -3227,12 +3294,12 @@ function SpreadSelector({
                     ? "A clear message for the present moment"
                     : "Past · Present · Direction"}
                 </span>
-                <span className="mt-3 inline-flex rounded-full border border-amber-100/12 bg-black/18 px-2.5 py-1 text-[11px] font-medium text-amber-100/64">
+                <span className="mt-3 inline-flex rounded-full border border-sky-100/12 bg-black/18 px-2.5 py-1 text-[11px] font-medium text-sky-100/64">
                   {spread === "one-card" ? "Quick guidance" : "Deeper reading"}
                 </span>
               </span>
               {selected && (
-                <span className="flex h-6 w-6 items-center justify-center rounded-full border border-amber-100/60 bg-amber-300/20 text-xs text-amber-50">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full border border-sky-100/60 bg-sky-300/20 text-xs text-white">
                   ✓
                 </span>
               )}
@@ -3246,16 +3313,16 @@ function SpreadSelector({
 
 function SingleCardMark() {
   return (
-    <span className="block h-9 w-6 rounded-md border border-amber-200/45 bg-gradient-to-b from-amber-200/14 to-indigo-950 shadow-[0_10px_24px_rgba(245,158,11,0.14)]" />
+    <span className="block h-9 w-6 rounded-md border border-sky-200/45 bg-gradient-to-b from-sky-200/14 to-indigo-950 shadow-[0_10px_24px_rgba(34,199,242,0.14)]" />
   );
 }
 
 function ThreeCardMark() {
   return (
     <span className="relative block h-10 w-14">
-      <span className="absolute left-0 top-2 h-8 w-5 -rotate-12 rounded-md border border-amber-200/35 bg-indigo-950" />
-      <span className="absolute left-4 top-0 h-9 w-6 rounded-md border border-amber-200/50 bg-gradient-to-b from-amber-200/14 to-indigo-950 shadow-[0_10px_24px_rgba(245,158,11,0.14)]" />
-      <span className="absolute right-0 top-2 h-8 w-5 rotate-12 rounded-md border border-amber-200/35 bg-indigo-950" />
+      <span className="absolute left-0 top-2 h-8 w-5 -rotate-12 rounded-md border border-sky-200/35 bg-indigo-950" />
+      <span className="absolute left-4 top-0 h-9 w-6 rounded-md border border-sky-200/50 bg-gradient-to-b from-sky-200/14 to-indigo-950 shadow-[0_10px_24px_rgba(34,199,242,0.14)]" />
+      <span className="absolute right-0 top-2 h-8 w-5 rotate-12 rounded-md border border-sky-200/35 bg-indigo-950" />
     </span>
   );
 }
@@ -3282,20 +3349,20 @@ function ReadingSlots({
             key={`${label}-${index}`}
             className={`rounded-[18px] border p-3 text-center transition ${
               assigned
-                ? "border-amber-200/42 bg-amber-300/[0.07] shadow-[0_14px_36px_rgba(245,158,11,0.12)]"
-                : "border-white/[0.08] bg-black/14"
+                ? "border-sky-300/42 bg-sky-300/[0.07] shadow-[0_14px_36px_rgba(34,199,242,0.12)]"
+                : "border-white/[0.08] bg-[#07101f]/70"
             }`}
           >
-            <div className="mx-auto aspect-[2/3] w-14 rounded-[14px] border border-dashed border-amber-100/18 p-[2px] sm:w-16">
+            <div className="mx-auto aspect-[2/3] w-14 rounded-[14px] border border-dashed border-sky-100/18 p-[2px] sm:w-16">
               {assigned ? (
                 <TarotCardBack selected compact selectionNumber={index + 1} />
               ) : (
-                <div className="flex h-full w-full items-center justify-center rounded-[12px] bg-white/[0.025] text-amber-100/22">
+                <div className="flex h-full w-full items-center justify-center rounded-[12px] bg-white/[0.025] text-sky-100/22">
                   <TarotSparkleIcon className="h-4 w-4" />
                 </div>
               )}
             </div>
-            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-100/66">
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-100/66">
               {label}
             </p>
           </div>
@@ -3334,10 +3401,10 @@ function TarotDeck({
               aria-label={`Select tarot card ${visualIndex + 1}`}
               onClick={() => onToggleCard(cardIndex)}
               disabled={isLoading}
-              className={`group relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 rounded-[17px] border p-[1px] transition duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
+              className={`group relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 rounded-[17px] border p-[1px] transition duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
                 selected
-                  ? "z-20 border-amber-100/75 bg-amber-300/15 opacity-80 shadow-[0_18px_48px_rgba(245,158,11,0.22)]"
-                  : "z-10 border-white/[0.09] bg-white/[0.035] hover:z-30 hover:border-amber-100/45 hover:shadow-[0_18px_46px_rgba(245,158,11,0.16)]"
+                  ? "z-20 border-sky-100/75 bg-sky-300/15 opacity-80 shadow-[0_18px_48px_rgba(34,199,242,0.22)]"
+                  : "z-10 border-white/[0.09] bg-white/[0.035] hover:z-30 hover:border-sky-100/45 hover:shadow-[0_18px_46px_rgba(34,199,242,0.16)]"
               } disabled:cursor-not-allowed`}
               style={{
                 transform: selected
@@ -3373,16 +3440,16 @@ function RevealActionBar({
   onReveal: () => void;
 }) {
   return (
-    <div className="sticky bottom-0 mt-5 rounded-[20px] border border-amber-100/12 bg-[#050817]/88 p-3 shadow-[0_-14px_44px_rgba(2,8,23,0.44)] backdrop-blur-xl">
+    <div className="sticky bottom-0 mt-5 rounded-[20px] border border-sky-100/12 bg-[#050817]/88 p-3 shadow-[0_-14px_44px_rgba(2,8,23,0.44)] backdrop-blur-xl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-white/58">
-          <span className="font-semibold text-amber-100/80">{selectedCount}</span> of {requiredCount} cards selected
+          <span className="font-semibold text-sky-100/80">{selectedCount}</span> of {requiredCount} cards selected
         </p>
         <button
           type="button"
           onClick={onReveal}
           disabled={!canReveal || isLoading}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#312313] via-[#8a5a18] to-[#f59e0b] px-5 text-sm font-semibold text-white shadow-[0_16px_42px_rgba(245,158,11,0.2)] transition hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#08b7f2] to-[#2563eb] px-5 text-sm font-semibold text-white shadow-[0_16px_42px_rgba(34,199,242,0.22)] transition hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none"
         >
           <TarotSparkleIcon className="h-4 w-4" />
           {isRevealing ? (
@@ -3440,16 +3507,15 @@ function TarotExperience({
 
   return (
     <div
-      className={`relative mx-auto w-full overflow-hidden rounded-[28px] border border-amber-100/16 p-4 text-left shadow-[0_28px_110px_rgba(2,8,23,0.62)] backdrop-blur-2xl sm:p-5 ${
+      className={`relative mx-auto w-full overflow-hidden rounded-[28px] border border-sky-100/16 p-4 text-left shadow-[0_28px_110px_rgba(2,8,23,0.62)] backdrop-blur-2xl sm:p-5 ${
         compact ? "max-w-[980px]" : "max-w-[900px]"
       }`}
       style={{
         background:
-          "radial-gradient(circle at 50% -20%, rgba(245,158,11,0.13), transparent 34%), radial-gradient(circle at 85% 18%, rgba(79,70,229,0.14), transparent 30%), linear-gradient(145deg, rgba(255,255,255,0.07), rgba(245,158,11,0.035)), rgba(2,8,23,0.84)",
+          "radial-gradient(circle at 50% -20%, rgba(34,199,242,0.12), transparent 34%), radial-gradient(circle at 85% 18%, rgba(37,99,235,0.14), transparent 30%), linear-gradient(145deg, rgba(255,255,255,0.07), rgba(34,199,242,0.03)), rgba(2,8,23,0.84)",
       }}
     >
-      <div className="pointer-events-none absolute inset-0 opacity-50 [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.55)_1px,transparent_0)] [background-size:22px_22px]" />
-      <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full border border-amber-100/10" />
+      <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full border border-sky-100/10" />
       <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full border border-indigo-200/10" />
 
       <div className="relative">
@@ -3477,7 +3543,7 @@ function TarotExperience({
             type="button"
             onClick={onStart}
             disabled={isLoading || !question.trim()}
-            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#21182a] via-[#7a4d17] to-[#d97706] px-5 text-sm font-semibold text-white shadow-[0_18px_48px_rgba(245,158,11,0.2)] transition hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none"
+            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#08b7f2] to-[#2563eb] px-5 text-sm font-semibold text-white shadow-[0_18px_48px_rgba(34,199,242,0.22)] transition hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none"
           >
             {isShuffling ? (
               <LoadingDots />
@@ -3496,7 +3562,7 @@ function TarotExperience({
             <>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-100/56">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-100/56">
                     {activeSession.spreadName}
                   </p>
                   <p className="mt-1 text-sm text-white/52">
@@ -3506,7 +3572,7 @@ function TarotExperience({
                   </p>
                 </div>
                 <p className="text-sm text-white/58">
-                  <span className="font-semibold text-amber-100/80">
+                  <span className="font-semibold text-sky-100/80">
                     {selectedIndexes.length}
                   </span>{" "}
                   of {activeSession.selectionCount} cards selected
