@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/backend/auth";
 import { getSavedUserProfile } from "@/lib/backend/birthDetailsMemory";
-import { saveAiExchange } from "@/lib/backend/chats";
+import { findUserChat, saveAiExchange } from "@/lib/backend/chats";
 import { buildConversationText } from "@/lib/backend/conversation";
 import { createSupabaseUserClient } from "@/lib/backend/supabaseUserClient";
 import {
@@ -10,15 +10,18 @@ import {
 } from "@/lib/backend/errors";
 import { callBhagyaOpenAI } from "@/lib/backend/openai";
 import { checkRateLimit } from "@/lib/backend/rateLimit";
-import { validateAiRequestBody } from "@/lib/backend/validation";
-import { buildPalmistryPrompt, hasPalmEvidence } from "@/lib/palmistry/palmistryPrompt";
+import { isUuid, validateAiRequestBody } from "@/lib/backend/validation";
+import {
+  buildPalmistryPrompt,
+  hasPalmEvidence,
+} from "@/lib/palmistry/palmistryPrompt";
 import { buildPalmImageMissingResponse } from "@/lib/guidanceResponses";
 
 export const runtime = "nodejs";
 
 const routeName = "api/palmistry";
 const palmBucket = "palm-images";
-const maxPalmImageSize = 10 * 1024 * 1024;
+const maxPalmImageSize = 15 * 1024 * 1024;
 const allowedPalmImageTypes = ["image/jpeg", "image/png", "image/webp"];
 
 function apiError(status: number, code: string, message: string) {
@@ -48,6 +51,10 @@ function logPalmistryError(label: string, error: unknown) {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 function sanitizeFileName(name: string) {
   return (
     name
@@ -59,15 +66,21 @@ function sanitizeFileName(name: string) {
   );
 }
 
-function parseMessages(value: FormDataEntryValue | null) {
-  if (typeof value !== "string" || !value.trim()) return [];
-
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function isAllowedPalmStoragePath({
+  storagePath,
+  userId,
+  chatId,
+}: {
+  storagePath: string;
+  userId: string;
+  chatId: string;
+}) {
+  return (
+    storagePath.startsWith(`${userId}/${chatId}/`) &&
+    !storagePath.includes("..") &&
+    !storagePath.includes("\\") &&
+    !storagePath.includes("//")
+  );
 }
 
 function parsePalmReadingJson(text: string) {
@@ -81,16 +94,14 @@ function parsePalmReadingJson(text: string) {
   try {
     const parsed: unknown = JSON.parse(withoutFence);
 
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const record = parsed as Record<string, unknown>;
-
+    if (isRecord(parsed)) {
       return {
-        usable: record.usable === true,
+        usable: parsed.usable === true,
         qualityReason:
-          typeof record.qualityReason === "string"
-            ? record.qualityReason
+          typeof parsed.qualityReason === "string"
+            ? parsed.qualityReason
             : "",
-        reading: typeof record.reading === "string" ? record.reading : "",
+        reading: typeof parsed.reading === "string" ? parsed.reading : "",
       };
     }
   } catch {
@@ -108,6 +119,23 @@ function parsePalmReadingJson(text: string) {
   };
 }
 
+function isOpenAiTimeout(error: unknown) {
+  if (!(error && typeof error === "object")) return false;
+
+  const maybeError = error as {
+    name?: unknown;
+    code?: unknown;
+    message?: unknown;
+  };
+
+  return (
+    maybeError.name === "TimeoutError" ||
+    maybeError.code === "ETIMEDOUT" ||
+    (typeof maybeError.message === "string" &&
+      /\btimeout|timed out\b/i.test(maybeError.message))
+  );
+}
+
 function buildImageMessageContent({
   storagePath,
   signedUrl,
@@ -115,7 +143,7 @@ function buildImageMessageContent({
   mimeType,
   size,
 }: {
-  storagePath?: string;
+  storagePath: string;
   signedUrl?: string;
   fileName: string;
   mimeType: string;
@@ -124,9 +152,7 @@ function buildImageMessageContent({
   const basePayload = {
     type: "bhagya.image",
     mode: "palmistry",
-    text: storagePath
-      ? "Palm photo stored for analysis."
-      : "Palm photo uploaded for analysis. Image storage is not configured yet.",
+    text: "Palm photo stored for analysis.",
     storagePath,
     imageName: fileName,
     imageMimeType: mimeType,
@@ -142,107 +168,176 @@ function buildImageMessageContent({
   };
 }
 
-async function uploadPalmImage({
+function validatePalmImageBody(body: unknown) {
+  const validation = validateAiRequestBody(body);
+
+  if (!validation.ok) {
+    return { ok: false as const, status: 400, code: "BAD_REQUEST", message: validation.error };
+  }
+
+  if (!isRecord(body)) {
+    return {
+      ok: false as const,
+      status: 400,
+      code: "BAD_REQUEST",
+      message: "Invalid request body.",
+    };
+  }
+
+  const storagePath =
+    typeof body.storagePath === "string" ? body.storagePath.trim() : "";
+  const fileName =
+    typeof body.fileName === "string"
+      ? sanitizeFileName(body.fileName)
+      : "Palm photo";
+  const mimeType = typeof body.mimeType === "string" ? body.mimeType : "";
+  const fileSize = typeof body.fileSize === "number" ? body.fileSize : 0;
+  const chatId = validation.value.chatId || "";
+
+  if (!chatId || !isUuid(chatId)) {
+    return {
+      ok: false as const,
+      status: 400,
+      code: "BAD_REQUEST",
+      message: "Invalid chat id.",
+    };
+  }
+
+  if (!storagePath) {
+    return {
+      ok: false as const,
+      status: 400,
+      code: "STORAGE_PATH_REQUIRED",
+      message: "The uploaded palm photo could not be found.",
+    };
+  }
+
+  if (!allowedPalmImageTypes.includes(mimeType)) {
+    return {
+      ok: false as const,
+      status: 415,
+      code: "UNSUPPORTED_IMAGE",
+      message: "This image format is not supported. Please upload JPG, PNG, or WEBP.",
+    };
+  }
+
+  if (fileSize > maxPalmImageSize) {
+    return {
+      ok: false as const,
+      status: 413,
+      code: "IMAGE_TOO_LARGE",
+      message: "Please choose an image smaller than 15 MB.",
+    };
+  }
+
+  if (validation.value.service !== "palmistry") {
+    return {
+      ok: false as const,
+      status: 400,
+      code: "BAD_REQUEST",
+      message: "Invalid service selected.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    value: {
+      ...validation.value,
+      chatId,
+      storagePath,
+      fileName,
+      mimeType,
+      fileSize,
+    },
+  };
+}
+
+async function savePalmReadingMessages({
   request,
   userId,
   chatId,
-  imageFile,
+  languageCode,
+  imageContent,
+  answer,
 }: {
   request: Request;
   userId: string;
   chatId: string;
-  imageFile: File;
+  languageCode: string;
+  imageContent: string;
+  answer: string;
 }) {
   const supabase = createSupabaseUserClient(request);
-  const safeFileName = sanitizeFileName(imageFile.name || "palm-photo");
-  const storagePath = `${userId}/${chatId}/${Date.now()}-${safeFileName}`;
-  const imageBuffer = Buffer.from(await imageFile.arrayBuffer());
+  const chat = await findUserChat({ supabase, userId, chatId });
 
-  const { error: uploadError } = await supabase.storage
-    .from(palmBucket)
-    .upload(storagePath, imageBuffer, {
-      contentType: imageFile.type,
-      upsert: false,
-    });
-
-  if (uploadError) {
-    console.error("[palmistry] storage upload failed", {
-      message: uploadError.message,
-      name: uploadError.name,
-    });
-
-    return {
-      storagePath: undefined,
-      signedUrl: undefined,
-      imageBuffer,
-    };
+  if (!chat) {
+    throw new Error("CHAT_NOT_FOUND");
   }
 
-  const { data: signedData, error: signedError } = await supabase.storage
-    .from(palmBucket)
-    .createSignedUrl(storagePath, 60 * 60);
+  const { error } = await supabase.from("messages").insert([
+    {
+      chat_id: chatId,
+      user_id: userId,
+      role: "user",
+      content: imageContent,
+      service: "palmistry",
+      language_code: languageCode,
+    },
+    {
+      chat_id: chatId,
+      user_id: userId,
+      role: "assistant",
+      content: answer,
+      service: "palmistry",
+      language_code: languageCode,
+    },
+  ]);
 
-  if (signedError) {
-    console.error("[palmistry] storage signed url failed", {
-      message: signedError.message,
-      name: signedError.name,
-    });
-  }
+  if (error) throw error;
 
-  return {
-    storagePath,
-    signedUrl: signedData?.signedUrl,
-    imageBuffer,
-  };
+  const { error: updateError } = await supabase
+    .from("chats")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", chatId)
+    .eq("user_id", userId);
+
+  if (updateError) throw updateError;
 }
 
-async function handleImageAnalysis(request: Request, userId: string) {
-  const formData = await request.formData();
-  const imageValue = formData.get("image");
+async function handleImageAnalysisFromStorage({
+  request,
+  userId,
+  body,
+}: {
+  request: Request;
+  userId: string;
+  body: unknown;
+}) {
+  const validation = validatePalmImageBody(body);
 
-  if (!(imageValue instanceof File)) {
-    return apiError(400, "IMAGE_REQUIRED", "Please upload a palm photo first.");
+  if (!validation.ok) {
+    return apiError(validation.status, validation.code, validation.message);
   }
 
-  const imageFile = imageValue;
+  const {
+    chatId,
+    storagePath,
+    fileName,
+    mimeType,
+    fileSize,
+    question,
+    messages,
+    language,
+    languageCode,
+  } = validation.value;
 
-  if (imageFile.size <= 0) {
-    return apiError(400, "IMAGE_REQUIRED", "Please upload a palm photo first.");
-  }
-
-  if (imageFile.size > maxPalmImageSize) {
+  if (!isAllowedPalmStoragePath({ storagePath, userId, chatId })) {
     return apiError(
-      413,
-      "IMAGE_TOO_LARGE",
-      "The image is too large. Please upload a photo under 10 MB."
+      403,
+      "STORAGE_PATH_FORBIDDEN",
+      "This palm photo cannot be analysed from your account."
     );
   }
-
-  if (!allowedPalmImageTypes.includes(imageFile.type)) {
-    return apiError(
-      415,
-      "UNSUPPORTED_IMAGE",
-      "Please upload a JPG, PNG or WEBP image."
-    );
-  }
-
-  const question =
-    typeof formData.get("question") === "string"
-      ? String(formData.get("question")).trim()
-      : "Palm photo uploaded for analysis.";
-  const languageCode =
-    typeof formData.get("languageCode") === "string"
-      ? String(formData.get("languageCode"))
-      : "english";
-  const language =
-    typeof formData.get("language") === "string"
-      ? String(formData.get("language"))
-      : "English";
-  const chatId =
-    typeof formData.get("chatId") === "string"
-      ? String(formData.get("chatId")).trim()
-      : "";
-  const messages = parseMessages(formData.get("messages"));
 
   const rate = checkRateLimit(userId);
 
@@ -250,16 +345,50 @@ async function handleImageAnalysis(request: Request, userId: string) {
     return rateLimitedResponse(languageCode);
   }
 
+  const supabase = createSupabaseUserClient(request);
+  const chat = await findUserChat({ supabase, userId, chatId });
+
+  if (!chat) {
+    return apiError(404, "CHAT_NOT_FOUND", "Chat not found.");
+  }
+
+  const { data: imageBlob, error: downloadError } = await supabase.storage
+    .from(palmBucket)
+    .download(storagePath);
+
+  if (downloadError || !imageBlob) {
+    logPalmistryError("image download failed", downloadError);
+    return apiError(
+      404,
+      "IMAGE_RETRIEVE_FAILED",
+      "The image was uploaded, but could not be retrieved for analysis."
+    );
+  }
+
+  const resolvedMimeType = allowedPalmImageTypes.includes(imageBlob.type)
+    ? imageBlob.type
+    : mimeType;
+
+  if (!allowedPalmImageTypes.includes(resolvedMimeType)) {
+    return apiError(
+      415,
+      "UNSUPPORTED_IMAGE",
+      "This image format is not supported. Please upload JPG, PNG, or WEBP."
+    );
+  }
+
+  if (imageBlob.size > maxPalmImageSize || fileSize > maxPalmImageSize) {
+    return apiError(
+      413,
+      "IMAGE_TOO_LARGE",
+      "Please choose an image smaller than 15 MB."
+    );
+  }
+
   const conversationText = buildConversationText(messages, question);
   const profile = await getSavedUserProfile({ request, userId }).catch(() => null);
-  const upload = await uploadPalmImage({
-    request,
-    userId,
-    chatId: chatId || "pending",
-    imageFile,
-  });
-  const base64Image = upload.imageBuffer.toString("base64");
-  const dataUrl = `data:${imageFile.type};base64,${base64Image}`;
+  const imageBuffer = Buffer.from(await imageBlob.arrayBuffer());
+  const dataUrl = `data:${resolvedMimeType};base64,${imageBuffer.toString("base64")}`;
 
   try {
     const rawAnswer = await callBhagyaOpenAI({
@@ -284,40 +413,75 @@ async function handleImageAnalysis(request: Request, userId: string) {
       );
     }
 
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from(palmBucket)
+      .createSignedUrl(storagePath, 60 * 60);
+
+    if (signedError) {
+      logPalmistryError("storage signed url failed", signedError);
+    }
+
     const imageMessage = buildImageMessageContent({
-      storagePath: upload.storagePath,
-      signedUrl: upload.signedUrl,
-      fileName: imageFile.name || "Palm photo",
-      mimeType: imageFile.type,
-      size: imageFile.size,
+      storagePath,
+      signedUrl: signedData?.signedUrl,
+      fileName,
+      mimeType: resolvedMimeType,
+      size: imageBlob.size || fileSize,
     });
+    const answer = parsedAnswer.reading || rawAnswer;
+
+    try {
+      await savePalmReadingMessages({
+        request,
+        userId,
+        chatId,
+        languageCode,
+        imageContent: imageMessage.persistedContent,
+        answer,
+      });
+    } catch (error) {
+      logPalmistryError("database save failed", error);
+      return apiError(
+        500,
+        "DB_SAVE_FAILED",
+        "Your reading was generated, but could not be saved. Please try again."
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      answer: parsedAnswer.reading || rawAnswer,
+      answer,
       imageMessage,
-      storageConfigured: Boolean(upload.storagePath),
+      saved: true,
     });
   } catch (error) {
     logPalmistryError("analysis failed", error);
 
+    if (isOpenAiTimeout(error)) {
+      return apiError(
+        504,
+        "OPENAI_TIMEOUT",
+        "The palm analysis took too long. Please try again."
+      );
+    }
+
     return apiError(
       500,
       "PALM_ANALYSIS_FAILED",
-      "Bhagya could not analyse this photo right now. Please try again."
+      "The image was uploaded, but the palm analysis could not be completed."
     );
   }
 }
 
-async function handleTextPalmistry(request: Request, userId: string) {
-  let body: unknown;
-
-  try {
-    body = await request.json();
-  } catch {
-    return badRequestResponse("Invalid JSON body.");
-  }
-
+async function handleTextPalmistry({
+  request,
+  userId,
+  body,
+}: {
+  request: Request;
+  userId: string;
+  body: unknown;
+}) {
   const validation = validateAiRequestBody(body);
 
   if (!validation.ok) {
@@ -333,10 +497,7 @@ async function handleTextPalmistry(request: Request, userId: string) {
   }
 
   const conversationText = buildConversationText(messages, question);
-  const rawBody =
-    body && typeof body === "object" && !Array.isArray(body)
-      ? (body as Record<string, unknown>)
-      : {};
+  const rawBody = isRecord(body) ? body : {};
 
   if (!hasPalmEvidence(rawBody, conversationText)) {
     const answer = buildPalmImageMissingResponse(languageCode);
@@ -389,20 +550,30 @@ export async function POST(request: Request) {
     );
   }
 
-  try {
-    const contentType = request.headers.get("content-type") || "";
+  let body: unknown;
 
-    if (contentType.includes("multipart/form-data")) {
-      return await handleImageAnalysis(request, user.id);
+  try {
+    body = await request.json();
+  } catch {
+    return badRequestResponse("Invalid JSON body.");
+  }
+
+  try {
+    if (isRecord(body) && typeof body.storagePath === "string") {
+      return await handleImageAnalysisFromStorage({
+        request,
+        userId: user.id,
+        body,
+      });
     }
 
-    return await handleTextPalmistry(request, user.id);
+    return await handleTextPalmistry({ request, userId: user.id, body });
   } catch (error) {
     logPalmistryError("analysis failed", error);
     return apiError(
       500,
       "PALM_ANALYSIS_FAILED",
-      "Bhagya could not analyse this photo right now. Please try again."
+      "The image was uploaded, but the palm analysis could not be completed."
     );
   }
 }

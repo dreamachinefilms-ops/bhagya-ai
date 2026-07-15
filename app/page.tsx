@@ -77,7 +77,8 @@ const IMAGE_MESSAGE_TYPE = "bhagya.image";
 const PALM_UPLOAD_TEXT = "Palm photo uploaded for analysis.";
 const PALM_ANALYSIS_LOADING_TEXT = "Bhagya is studying the lines of your palm...";
 const PALM_ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const PALM_MAX_FILE_SIZE = 10 * 1024 * 1024;
+const PALM_MAX_FILE_SIZE = 15 * 1024 * 1024;
+const PALM_IMAGE_BUCKET = "palm-images";
 const services: {
   id: ServiceType;
   label: string;
@@ -215,10 +216,20 @@ function getPalmAnalysisErrorMessage(data: unknown, fallbackStatus: number) {
   const messages: Record<string, string> = {
     AUTH_REQUIRED: "Please sign in again to analyse your palm.",
     IMAGE_REQUIRED: "Please upload a palm photo first.",
-    IMAGE_TOO_LARGE: "Please upload a photo under 10 MB.",
+    IMAGE_TOO_LARGE: "Please choose an image smaller than 15 MB.",
     UNSUPPORTED_IMAGE: "Please upload a JPG, PNG or WEBP image.",
+    PALM_UPLOAD_FAILED: "Your palm photo could not be uploaded. Please try again.",
+    STORAGE_PATH_REQUIRED:
+      "The image was uploaded, but the palm analysis could not be completed.",
+    STORAGE_PATH_FORBIDDEN:
+      "This palm photo cannot be analysed from your account.",
+    IMAGE_RETRIEVE_FAILED:
+      "The image was uploaded, but could not be retrieved for analysis.",
+    DB_SAVE_FAILED:
+      "Your reading was generated, but could not be saved. Please try again.",
+    OPENAI_TIMEOUT: "The palm analysis took too long. Please try again.",
     PALM_ANALYSIS_FAILED:
-      "Bhagya could not analyse this palm photo. Please try again.",
+      "The image was uploaded, but the palm analysis could not be completed.",
   };
 
   if (code === "PALM_NOT_CLEAR" && message) return message;
@@ -244,6 +255,17 @@ function isLanguageCode(value: unknown): value is LanguageCode {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function sanitizePalmFileName(name: string) {
+  return (
+    name
+      .trim()
+      .replace(/[/\\]/g, "-")
+      .replace(/[^a-zA-Z0-9._-]/g, "-")
+      .replace(/-+/g, "-")
+      .slice(0, 80) || "palm-photo"
+  );
 }
 
 function getRealisticReplyDelay(answer: string) {
@@ -664,6 +686,37 @@ export default function Home() {
       : null;
   }
 
+  async function uploadPalmImageForAnalysis({
+    image,
+    userId,
+    chatId,
+  }: {
+    image: UploadedImage;
+    userId: string;
+    chatId: string;
+  }) {
+    if (image.storagePath) return image;
+
+    const safeFileName = sanitizePalmFileName(image.name || "palm-photo");
+    const storagePath = `${userId}/${chatId}/${Date.now()}-${safeFileName}`;
+    const { error } = await supabase.storage
+      .from(PALM_IMAGE_BUCKET)
+      .upload(storagePath, image.file, {
+        contentType: image.mimeType,
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (error) {
+      throw new Error("PALM_UPLOAD_FAILED");
+    }
+
+    return {
+      ...image,
+      storagePath,
+    };
+  }
+
   async function handleAsk() {
     const cleanQuestion = question.trim();
 
@@ -906,7 +959,7 @@ export default function Home() {
     if (image.file.size > PALM_MAX_FILE_SIZE) {
       setPalmAnalysisError({
         code: "IMAGE_TOO_LARGE",
-        message: "Please upload a photo under 10 MB.",
+        message: "Please choose an image smaller than 15 MB.",
         image,
       });
       return;
@@ -1042,24 +1095,33 @@ export default function Home() {
     ];
 
     let completedWithReading = false;
+    let uploadedImage = image;
 
     try {
-      const formData = new FormData();
-
-      formData.append("image", image.file);
-      formData.append("question", cleanQuestion);
-      formData.append("service", service);
-      formData.append("language", selectedLanguageLabel);
-      formData.append("languageCode", selectedLanguage);
-      formData.append("chatId", chatId);
-      formData.append("messages", JSON.stringify(conversationHistory));
+      uploadedImage = await uploadPalmImageForAnalysis({
+        image,
+        userId: session.user.id,
+        chatId,
+      });
 
       const responsePromise = fetch("/api/palmistry", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
         },
-        body: formData,
+        body: JSON.stringify({
+          chatId,
+          storagePath: uploadedImage.storagePath,
+          fileName: uploadedImage.name,
+          mimeType: uploadedImage.mimeType,
+          fileSize: uploadedImage.size,
+          question: cleanQuestion,
+          service,
+          language: selectedLanguageLabel,
+          languageCode: selectedLanguage,
+          messages: conversationHistory,
+        }),
       });
 
       const res = await responsePromise;
@@ -1079,7 +1141,9 @@ export default function Home() {
               ? {
                   ...chat,
                   messages: chat.messages.filter(
-                    (messageItem) => messageItem.id !== assistantMessageId
+                    (messageItem) =>
+                      messageItem.id !== assistantMessageId &&
+                      messageItem.id !== userMessageId
                   ),
                 }
               : chat
@@ -1088,7 +1152,7 @@ export default function Home() {
         setPalmAnalysisError({
           code: isRecord(data) && typeof data.code === "string" ? data.code : "",
           message,
-          image,
+          image: uploadedImage,
         });
         setPalmScanImageUrl("");
         setIsPalmScanReady(false);
@@ -1102,10 +1166,6 @@ export default function Home() {
       const imageMessage = isRecord(data) && isRecord(data.imageMessage)
         ? data.imageMessage
         : null;
-      const persistedImageContent =
-        imageMessage && typeof imageMessage.persistedContent === "string"
-          ? imageMessage.persistedContent
-          : previewImageContent;
       const displayImageContent =
         imageMessage && typeof imageMessage.content === "string"
           ? imageMessage.content
@@ -1130,22 +1190,6 @@ export default function Home() {
       setPalmImage(null);
       setPalmAnalysisError(null);
 
-      await saveServerMessage({
-        chatId,
-        role: "user",
-        content: persistedImageContent,
-        service,
-        languageCode: selectedLanguage,
-      });
-
-      await saveServerMessage({
-        chatId,
-        role: "assistant",
-        content: finalAnswer,
-        service,
-        languageCode: selectedLanguage,
-      });
-
       await loadUserChats();
       completedWithReading = true;
       setIsPalmScanReady(true);
@@ -1159,16 +1203,24 @@ export default function Home() {
             ? {
                 ...chat,
                 messages: chat.messages.filter(
-                  (messageItem) => messageItem.id !== assistantMessageId
+                  (messageItem) =>
+                    messageItem.id !== assistantMessageId &&
+                    messageItem.id !== userMessageId
                 ),
               }
             : chat
         )
       );
       setPalmAnalysisError({
-        code: "PALM_ANALYSIS_FAILED",
-        message: "Bhagya could not analyse this palm photo. Please try again.",
-        image,
+        code:
+          error instanceof Error && error.message === "PALM_UPLOAD_FAILED"
+            ? "PALM_UPLOAD_FAILED"
+            : "PALM_ANALYSIS_FAILED",
+        message:
+          error instanceof Error && error.message === "PALM_UPLOAD_FAILED"
+            ? "Your palm photo could not be uploaded. Please try again."
+            : "The image was uploaded, but the palm analysis could not be completed.",
+        image: uploadedImage,
       });
       setPalmScanImageUrl("");
       setIsPalmScanReady(false);
@@ -1585,7 +1637,7 @@ export default function Home() {
                 <ImageUploader
                   mode="palmistry"
                   accept="image/*"
-                  maxSize={10}
+                  maxSize={15}
                   allowCamera
                   value={palmImage}
                   onChange={(nextImage) => {
@@ -1951,7 +2003,7 @@ export default function Home() {
                   <ImageUploader
                     mode="palmistry"
                     accept="image/*"
-                    maxSize={10}
+                    maxSize={15}
                     allowCamera
                     value={palmImage}
                     onChange={(nextImage) => {
@@ -2247,7 +2299,7 @@ function UniversalMobileLanding({
               <ImageUploader
                 mode="palmistry"
                 accept="image/*"
-                maxSize={10}
+                maxSize={15}
                 allowCamera
                 value={palmImage}
                 onChange={(nextImage) => {

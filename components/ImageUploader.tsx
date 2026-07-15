@@ -9,6 +9,7 @@ export type UploadedImage = {
   name: string;
   size: number;
   mimeType: string;
+  storagePath?: string;
 };
 
 type ImageUploaderProps = {
@@ -45,7 +46,7 @@ function readAsDataUrl(file: File) {
 export default function ImageUploader({
   mode = "generic",
   accept = "image/*",
-  maxSize = 10,
+  maxSize = 15,
   allowCamera = false,
   value,
   onChange,

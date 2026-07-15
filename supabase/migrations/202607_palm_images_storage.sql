@@ -9,13 +9,13 @@ values (
   'palm-images',
   'palm-images',
   false,
-  10485760,
+  15728640,
   array['image/jpeg', 'image/png', 'image/webp']
 )
 on conflict (id) do update
 set
   public = false,
-  file_size_limit = 10485760,
+  file_size_limit = 15728640,
   allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp'];
 
 drop policy if exists "Users can read own palm images"
