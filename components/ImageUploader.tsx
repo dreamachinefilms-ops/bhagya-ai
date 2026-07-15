@@ -24,6 +24,7 @@ type ImageUploaderProps = {
 };
 
 const acceptedMimeTypes = ["image/jpeg", "image/png", "image/webp"];
+const emptyFileMessage = "Please upload a non-empty image file.";
 
 function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(bytes > 1024 * 1024 ? 1 : 2)}MB`;
@@ -64,13 +65,18 @@ export default function ImageUploader({
 
     setError("");
 
+    if (file.size <= 0) {
+      setError(emptyFileMessage);
+      return;
+    }
+
     if (!acceptedMimeTypes.includes(file.type)) {
-      setError("Please upload a JPG, PNG, or WEBP image.");
+      setError("Please upload a JPG, PNG or WEBP image.");
       return;
     }
 
     if (file.size > maxBytes) {
-      setError(`Image must be ${maxSize}MB or smaller.`);
+      setError(`Please upload an image smaller than ${maxSize} MB.`);
       return;
     }
 

@@ -505,3 +505,374 @@ input {
     opacity: 1;
   }
 }
+
+.palm-scan-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(env(safe-area-inset-top) + 18px) 16px
+    calc(env(safe-area-inset-bottom) + 18px);
+  background: radial-gradient(
+    circle at center,
+    rgba(14, 165, 233, 0.07),
+    rgba(2, 8, 23, 0.98) 62%
+  );
+  backdrop-filter: blur(22px);
+}
+
+.palm-scan-card {
+  width: min(100%, 420px);
+  transition:
+    opacity 650ms ease,
+    transform 650ms ease;
+}
+
+.palm-scan-screen.is-finishing .palm-scan-card {
+  opacity: 0;
+  transform: scale(0.98);
+}
+
+.palm-scan-image-wrap {
+  position: relative;
+  width: 100%;
+  max-height: 62svh;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 24px;
+  background: rgba(15, 23, 42, 0.94);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 18px 50px rgba(0, 0, 0, 0.45),
+    0 0 42px rgba(14, 165, 233, 0.12);
+}
+
+.palm-scan-image {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.palm-scan-dark-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(
+    to bottom,
+    rgba(2, 8, 23, 0.08),
+    rgba(2, 8, 23, 0.18)
+  );
+}
+
+.palm-scan-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(56, 189, 248, 0.16) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      rgba(56, 189, 248, 0.16) 1px,
+      transparent 1px
+    );
+  background-size: 28px 28px;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 12%,
+    black 88%,
+    transparent
+  );
+}
+
+.palm-scanner-line {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 4%;
+  z-index: 8;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(56, 189, 248, 0.85),
+    white,
+    rgba(37, 99, 235, 0.9),
+    transparent
+  );
+  box-shadow:
+    0 0 8px rgba(56, 189, 248, 0.9),
+    0 0 22px rgba(37, 99, 235, 0.65);
+  animation: palmScanSweep 2.7s ease-in-out infinite;
+}
+
+.palm-scanner-line.is-final {
+  opacity: 0.5;
+  animation-duration: 3.6s;
+}
+
+.palm-scanner-line::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -28px;
+  height: 56px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(56, 189, 248, 0.13),
+    transparent
+  );
+}
+
+.palm-scanner-glow {
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  top: -1px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  filter: blur(5px);
+}
+
+.palm-line-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.palm-path {
+  fill: none;
+  stroke: rgba(125, 211, 252, 0.1);
+  stroke-dasharray: 500;
+  stroke-dashoffset: 500;
+  stroke-linecap: round;
+  stroke-width: 3;
+  opacity: 0.75;
+  filter: drop-shadow(0 0 0 transparent);
+  transition:
+    stroke 300ms ease,
+    filter 300ms ease,
+    opacity 300ms ease;
+}
+
+.palm-path.is-active {
+  stroke: rgba(125, 211, 252, 0.95);
+  stroke-width: 4;
+  opacity: 1;
+  animation: drawPalmLine 1.25s ease forwards;
+  filter:
+    drop-shadow(0 0 5px rgba(56, 189, 248, 0.95))
+    drop-shadow(0 0 12px rgba(37, 99, 235, 0.75));
+}
+
+.palm-path.is-complete {
+  stroke: rgba(56, 189, 248, 0.36);
+  stroke-dashoffset: 0;
+}
+
+.palm-scan-screen.is-finishing .palm-path.is-complete {
+  stroke: rgba(125, 211, 252, 0.95);
+  filter:
+    drop-shadow(0 0 6px rgba(56, 189, 248, 0.95))
+    drop-shadow(0 0 14px rgba(37, 99, 235, 0.65));
+}
+
+.palm-marker {
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+
+.palm-marker circle {
+  fill: rgba(125, 211, 252, 0.94);
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.9));
+}
+
+.palm-marker line {
+  stroke: rgba(125, 211, 252, 0.72);
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+.palm-marker.is-visible {
+  opacity: 1;
+}
+
+.palm-scan-corners {
+  position: absolute;
+  inset: 14px;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.palm-corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-color: rgba(125, 211, 252, 0.86);
+  animation: palmCornerPulse 1.7s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.64));
+}
+
+.palm-corner-tl {
+  left: 0;
+  top: 0;
+  border-left: 2px solid;
+  border-top: 2px solid;
+}
+
+.palm-corner-tr {
+  right: 0;
+  top: 0;
+  border-right: 2px solid;
+  border-top: 2px solid;
+}
+
+.palm-corner-bl {
+  left: 0;
+  bottom: 0;
+  border-bottom: 2px solid;
+  border-left: 2px solid;
+}
+
+.palm-corner-br {
+  right: 0;
+  bottom: 0;
+  border-bottom: 2px solid;
+  border-right: 2px solid;
+}
+
+.palm-scan-info {
+  min-height: 112px;
+  margin-top: 20px;
+  text-align: center;
+}
+
+.palm-scan-status {
+  margin-bottom: 8px;
+  color: rgba(125, 211, 252, 0.68);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.palm-scan-info h2 {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 23px;
+  font-weight: 650;
+  line-height: 1.18;
+}
+
+.palm-scan-info > p:last-of-type {
+  max-width: 340px;
+  margin: 9px auto 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.palm-scan-stage-dots {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+.palm-scan-stage-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  transition:
+    width 240ms ease,
+    background 240ms ease,
+    box-shadow 240ms ease;
+}
+
+.palm-scan-stage-dots span.is-active {
+  width: 20px;
+  background: rgba(56, 189, 248, 0.9);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.45);
+}
+
+@keyframes palmScanSweep {
+  0% {
+    top: 5%;
+    opacity: 0.15;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  90% {
+    opacity: 1;
+  }
+
+  100% {
+    top: 94%;
+    opacity: 0.1;
+  }
+}
+
+@keyframes drawPalmLine {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes palmCornerPulse {
+  0%,
+  100% {
+    opacity: 0.54;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (min-width: 640px) {
+  .palm-scan-card {
+    width: min(440px, 92vw);
+  }
+}
+
+@media (max-height: 700px) {
+  .palm-scan-image-wrap {
+    max-height: 56svh;
+  }
+
+  .palm-scan-info {
+    margin-top: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .palm-scanner-line,
+  .palm-path.is-active,
+  .palm-corner {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .palm-scan-card,
+  .palm-path,
+  .palm-marker,
+  .palm-scan-stage-dots span {
+    transition-duration: 0.01ms !important;
+  }
+}

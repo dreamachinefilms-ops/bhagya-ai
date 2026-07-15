@@ -12,6 +12,59 @@ type ChatMessageInput = {
   languageCode?: string;
 };
 
+const palmImageBucket = "palm-images";
+
+function hydratePalmImageContent(content: string, signedUrl: string) {
+  if (!content.trim().startsWith("{")) return content;
+
+  try {
+    const payload: unknown = JSON.parse(content);
+
+    if (
+      payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      "type" in payload &&
+      payload.type === "bhagya.image" &&
+      "storagePath" in payload &&
+      typeof payload.storagePath === "string"
+    ) {
+      return JSON.stringify({
+        ...payload,
+        imageUrl: signedUrl,
+      });
+    }
+  } catch {
+    return content;
+  }
+
+  return content;
+}
+
+function getPalmImageStoragePath(content: string) {
+  if (!content.trim().startsWith("{")) return null;
+
+  try {
+    const payload: unknown = JSON.parse(content);
+
+    if (
+      payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      "type" in payload &&
+      payload.type === "bhagya.image" &&
+      "storagePath" in payload &&
+      typeof payload.storagePath === "string"
+    ) {
+      return payload.storagePath;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 async function getSupabaseForRequest(request: Request) {
   return createSupabaseUserClient(request);
 }
@@ -193,7 +246,29 @@ export async function listChatMessages({
     .order("created_at", { ascending: true });
 
   if (error) throw error;
-  return data || [];
+
+  return Promise.all(
+    (data || []).map(async (message) => {
+      if (message.service !== "palmistry" || typeof message.content !== "string") {
+        return message;
+      }
+
+      const storagePath = getPalmImageStoragePath(message.content);
+
+      if (!storagePath) return message;
+
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from(palmImageBucket)
+        .createSignedUrl(storagePath, 60 * 60);
+
+      if (signedError || !signedData?.signedUrl) return message;
+
+      return {
+        ...message,
+        content: hydratePalmImageContent(message.content, signedData.signedUrl),
+      };
+    })
+  );
 }
 
 export async function findUserChat({

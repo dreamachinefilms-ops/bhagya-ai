@@ -12,6 +12,7 @@ import {
 } from "react";
 import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
 import LanguageSelector from "@/components/LanguageSelector";
+import PalmScanAnimation from "@/components/PalmScanAnimation";
 import {
   DEFAULT_LANGUAGE_CODE,
   LANGUAGE_DEFAULT_MIGRATION_KEY,
@@ -38,7 +39,8 @@ type ImageMessagePayload = {
   type: "bhagya.image";
   mode: "palmistry";
   text: string;
-  imageUrl: string;
+  imageUrl?: string;
+  storagePath?: string;
   imageName?: string;
   imageMimeType?: string;
   imageSize?: number;
@@ -47,8 +49,15 @@ type ImageMessagePayload = {
 type ParsedMessageContent = {
   text: string;
   imageUrl?: string;
+  storagePath?: string;
   imageName?: string;
 };
+
+type PalmAnalysisError = {
+  code: string;
+  message: string;
+  image: UploadedImage;
+} | null;
 
 type Chat = {
   id: string;
@@ -66,15 +75,9 @@ type BirthDetailsStatus = {
 const PENDING_QUESTION_KEY = "bhagya_pending_question_v1";
 const IMAGE_MESSAGE_TYPE = "bhagya.image";
 const PALM_UPLOAD_TEXT = "Palm photo uploaded for analysis.";
-const PALM_LOADING_MESSAGES = [
-  "Detecting life line...",
-  "Reading heart line...",
-  "Examining head line...",
-  "Finding fate line...",
-  "Identifying mounts...",
-  "Preparing your spiritual reading...",
-];
-
+const PALM_ANALYSIS_LOADING_TEXT = "Bhagya is studying the lines of your palm...";
+const PALM_ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const PALM_MAX_FILE_SIZE = 10 * 1024 * 1024;
 const services: {
   id: ServiceType;
   label: string;
@@ -124,12 +127,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function makeImageMessageContent(image: UploadedImage): string {
+function makeImageMessageContent({
+  image,
+  imageUrl,
+  storagePath,
+}: {
+  image: UploadedImage;
+  imageUrl?: string;
+  storagePath?: string;
+}): string {
   const payload: ImageMessagePayload = {
     type: IMAGE_MESSAGE_TYPE,
     mode: "palmistry",
     text: PALM_UPLOAD_TEXT,
-    imageUrl: image.dataUrl,
+    imageUrl,
+    storagePath,
     imageName: image.name,
     imageMimeType: image.mimeType,
     imageSize: image.size,
@@ -154,6 +166,23 @@ function parseMessageContent(content: string): ParsedMessageContent {
       return {
         text: typeof payload.text === "string" ? payload.text : "",
         imageUrl: payload.imageUrl,
+        storagePath:
+          typeof payload.storagePath === "string"
+            ? payload.storagePath
+            : undefined,
+        imageName:
+          typeof payload.imageName === "string" ? payload.imageName : undefined,
+      };
+    }
+
+    if (
+      isRecord(payload) &&
+      payload.type === IMAGE_MESSAGE_TYPE &&
+      typeof payload.storagePath === "string"
+    ) {
+      return {
+        text: typeof payload.text === "string" ? payload.text : "",
+        storagePath: payload.storagePath,
         imageName:
           typeof payload.imageName === "string" ? payload.imageName : undefined,
       };
@@ -173,6 +202,28 @@ function chatHasPalmImage(chat: Chat | undefined) {
         Boolean(parseMessageContent(message.content).imageUrl)
     )
   );
+}
+
+function getPalmAnalysisErrorMessage(data: unknown, fallbackStatus: number) {
+  const fallback = `Could not analyse your palm. Error ${fallbackStatus}.`;
+
+  if (!isRecord(data)) return fallback;
+
+  const code = typeof data.code === "string" ? data.code : "";
+  const message = typeof data.message === "string" ? data.message : "";
+
+  const messages: Record<string, string> = {
+    AUTH_REQUIRED: "Please sign in again to analyse your palm.",
+    IMAGE_REQUIRED: "Please upload a palm photo first.",
+    IMAGE_TOO_LARGE: "Please upload a photo under 10 MB.",
+    UNSUPPORTED_IMAGE: "Please upload a JPG, PNG or WEBP image.",
+    PALM_ANALYSIS_FAILED:
+      "Bhagya could not analyse this palm photo. Please try again.",
+  };
+
+  if (code === "PALM_NOT_CLEAR" && message) return message;
+
+  return messages[code] || message || fallback;
 }
 
 function isServiceType(value: unknown): value is ServiceType {
@@ -225,7 +276,10 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [palmImage, setPalmImage] = useState<UploadedImage | null>(null);
   const [isPalmAnalyzing, setIsPalmAnalyzing] = useState(false);
-  const [palmLoadingMessageIndex, setPalmLoadingMessageIndex] = useState(0);
+  const [palmScanImageUrl, setPalmScanImageUrl] = useState("");
+  const [isPalmScanReady, setIsPalmScanReady] = useState(false);
+  const [palmAnalysisError, setPalmAnalysisError] =
+    useState<PalmAnalysisError>(null);
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -252,8 +306,6 @@ export default function Home() {
   const selectedLanguageLabel =
     languages.find((lang) => lang.code === selectedLanguage)?.label ||
     "English";
-  const palmLoadingMessage =
-    PALM_LOADING_MESSAGES[palmLoadingMessageIndex] || PALM_LOADING_MESSAGES[0];
 
   const getAuthHeaders = useCallback(async () => {
     const {
@@ -365,18 +417,6 @@ export default function Home() {
       localStorage.setItem(LANGUAGE_STORAGE_KEY, selectedLanguage);
     }
   }, [hasLoadedLanguage, selectedLanguage]);
-
-  useEffect(() => {
-    if (!isPalmAnalyzing) return;
-
-    const interval = window.setInterval(() => {
-      setPalmLoadingMessageIndex(
-        (current) => (current + 1) % PALM_LOADING_MESSAGES.length
-      );
-    }, 2000);
-
-    return () => window.clearInterval(interval);
-  }, [isPalmAnalyzing]);
 
   useEffect(() => {
     if (isCheckingAuth) return;
@@ -492,6 +532,9 @@ export default function Home() {
     setActiveChatId(null);
     setQuestion("");
     setPalmImage(null);
+    setPalmAnalysisError(null);
+    setPalmScanImageUrl("");
+    setIsPalmScanReady(false);
     setSelectedService("astrology");
     setIsLoading(false);
     setIsPalmAnalyzing(false);
@@ -505,6 +548,9 @@ export default function Home() {
     setActiveChatId(null);
     setQuestion("");
     setPalmImage(null);
+    setPalmAnalysisError(null);
+    setPalmScanImageUrl("");
+    setIsPalmScanReady(false);
     setIsLoading(false);
     setIsPalmAnalyzing(false);
     setIsSidebarOpen(false);
@@ -839,6 +885,33 @@ export default function Home() {
   async function handlePalmAnalyze(image: UploadedImage) {
     if (isCheckingAuth || isCheckingBirthProfile || isLoading) return;
 
+    if (image.file.size <= 0) {
+      setPalmAnalysisError({
+        code: "IMAGE_REQUIRED",
+        message: "Please upload a palm photo first.",
+        image,
+      });
+      return;
+    }
+
+    if (!PALM_ALLOWED_IMAGE_TYPES.includes(image.file.type)) {
+      setPalmAnalysisError({
+        code: "UNSUPPORTED_IMAGE",
+        message: "Please upload a JPG, PNG or WEBP image.",
+        image,
+      });
+      return;
+    }
+
+    if (image.file.size > PALM_MAX_FILE_SIZE) {
+      setPalmAnalysisError({
+        code: "IMAGE_TOO_LARGE",
+        message: "Please upload a photo under 10 MB.",
+        image,
+      });
+      return;
+    }
+
     if (!isLoggedIn) {
       router.push("/login?next=/");
       return;
@@ -849,9 +922,12 @@ export default function Home() {
       return;
     }
 
-    const headers = await getAuthHeaders();
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-    if (!headers) {
+    if (sessionError || !session?.access_token) {
       setIsLoggedIn(false);
       router.push("/login?next=/");
       return;
@@ -859,10 +935,15 @@ export default function Home() {
 
     const service: ServiceType = "palmistry";
     const cleanQuestion = PALM_UPLOAD_TEXT;
-    const imageContent = makeImageMessageContent(image);
+    const previewImageContent = makeImageMessageContent({
+      image,
+      imageUrl: image.dataUrl,
+    });
 
+    setPalmAnalysisError(null);
     setSelectedService(service);
-    setPalmLoadingMessageIndex(0);
+    setPalmScanImageUrl(image.previewUrl);
+    setIsPalmScanReady(false);
     setIsLoading(true);
     setIsPalmAnalyzing(true);
 
@@ -902,7 +983,7 @@ export default function Home() {
     const userMessage: Message = {
       id: userMessageId,
       role: "user",
-      content: imageContent,
+      content: previewImageContent,
       service,
       languageCode: selectedLanguage,
     };
@@ -910,7 +991,7 @@ export default function Home() {
     const assistantMessage: Message = {
       id: assistantMessageId,
       role: "assistant",
-      content: t.consulting,
+      content: PALM_ANALYSIS_LOADING_TEXT,
       service,
       languageCode: selectedLanguage,
       isLoading: true,
@@ -943,14 +1024,6 @@ export default function Home() {
       return [updated, ...prev.filter((c) => c.id !== chatId)];
     });
 
-    await saveServerMessage({
-      chatId,
-      role: "user",
-      content: imageContent,
-      service,
-      languageCode: selectedLanguage,
-    });
-
     const conversationHistory = [
       ...(workingChat?.messages || [])
         .filter((message) => !message.isLoading)
@@ -962,44 +1035,108 @@ export default function Home() {
         })),
       {
         role: "user",
-        content: imageContent,
+        content: PALM_UPLOAD_TEXT,
         service,
         languageCode: selectedLanguage,
-        imageUrl: image.dataUrl,
       },
     ];
 
+    let completedWithReading = false;
+
     try {
-      const minimumDelay = sleep(3500 + Math.floor(Math.random() * 1200));
+      const formData = new FormData();
+
+      formData.append("image", image.file);
+      formData.append("question", cleanQuestion);
+      formData.append("service", service);
+      formData.append("language", selectedLanguageLabel);
+      formData.append("languageCode", selectedLanguage);
+      formData.append("chatId", chatId);
+      formData.append("messages", JSON.stringify(conversationHistory));
+
       const responsePromise = fetch("/api/palmistry", {
         method: "POST",
         headers: {
-          ...headers,
-          "X-Bhagya-Skip-Persistence": "true",
+          Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          chatId,
-          service,
-          question: cleanQuestion,
-          messages: conversationHistory,
-          palmImage: image.dataUrl,
-          language: selectedLanguageLabel,
-          languageCode: selectedLanguage,
-        }),
+        body: formData,
       });
 
-      const [res] = await Promise.all([responsePromise, minimumDelay]);
+      const res = await responsePromise;
+      const data = await res.json().catch(() => null);
 
       if (res.status === 401) {
         router.push("/login?next=/");
         return;
       }
 
-      const data = await res.json();
-      const finalAnswer = data.answer || t.silentError;
+      if (!res.ok) {
+        const message = getPalmAnalysisErrorMessage(data, res.status);
+
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.id === chatId
+              ? {
+                  ...chat,
+                  messages: chat.messages.filter(
+                    (messageItem) => messageItem.id !== assistantMessageId
+                  ),
+                }
+              : chat
+          )
+        );
+        setPalmAnalysisError({
+          code: isRecord(data) && typeof data.code === "string" ? data.code : "",
+          message,
+          image,
+        });
+        setPalmScanImageUrl("");
+        setIsPalmScanReady(false);
+        return;
+      }
+
+      const finalAnswer =
+        isRecord(data) && typeof data.answer === "string"
+          ? data.answer
+          : t.silentError;
+      const imageMessage = isRecord(data) && isRecord(data.imageMessage)
+        ? data.imageMessage
+        : null;
+      const persistedImageContent =
+        imageMessage && typeof imageMessage.persistedContent === "string"
+          ? imageMessage.persistedContent
+          : previewImageContent;
+      const displayImageContent =
+        imageMessage && typeof imageMessage.content === "string"
+          ? imageMessage.content
+          : previewImageContent;
+
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === chatId
+            ? {
+                ...chat,
+                messages: chat.messages.map((messageItem) =>
+                  messageItem.id === userMessageId
+                    ? { ...messageItem, content: displayImageContent }
+                    : messageItem
+                ),
+              }
+            : chat
+        )
+      );
 
       updateAssistantMessage(chatId, assistantMessageId, finalAnswer);
       setPalmImage(null);
+      setPalmAnalysisError(null);
+
+      await saveServerMessage({
+        chatId,
+        role: "user",
+        content: persistedImageContent,
+        service,
+        languageCode: selectedLanguage,
+      });
 
       await saveServerMessage({
         chatId,
@@ -1010,22 +1147,38 @@ export default function Home() {
       });
 
       await loadUserChats();
-    } catch {
+      completedWithReading = true;
+      setIsPalmScanReady(true);
+    } catch (error) {
       await sleep(1200);
 
-      updateAssistantMessage(chatId, assistantMessageId, t.cosmicError);
-
-      await saveServerMessage({
-        chatId,
-        role: "assistant",
-        content: t.cosmicError,
-        service,
-        languageCode: selectedLanguage,
+      console.error("Palmistry analysis request failed:", error);
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === chatId
+            ? {
+                ...chat,
+                messages: chat.messages.filter(
+                  (messageItem) => messageItem.id !== assistantMessageId
+                ),
+              }
+            : chat
+        )
+      );
+      setPalmAnalysisError({
+        code: "PALM_ANALYSIS_FAILED",
+        message: "Bhagya could not analyse this palm photo. Please try again.",
+        image,
       });
+      setPalmScanImageUrl("");
+      setIsPalmScanReady(false);
     } finally {
       setIsLoading(false);
-      setIsPalmAnalyzing(false);
-      setPalmLoadingMessageIndex(0);
+      if (!completedWithReading) {
+        setIsPalmAnalyzing(false);
+        setPalmScanImageUrl("");
+        setIsPalmScanReady(false);
+      }
     }
   }
 
@@ -1034,6 +1187,9 @@ export default function Home() {
     setSelectedService(chat.service);
     setQuestion("");
     setPalmImage(null);
+    setPalmAnalysisError(null);
+    setPalmScanImageUrl("");
+    setIsPalmScanReady(false);
     setIsSidebarOpen(false);
 
     const headers = await getAuthHeaders();
@@ -1331,6 +1487,7 @@ export default function Home() {
             setSelectedLanguage={setSelectedLanguage}
             palmImage={palmImage}
             setPalmImage={setPalmImage}
+            clearPalmAnalysisError={() => setPalmAnalysisError(null)}
             handlePalmAnalyze={handlePalmAnalyze}
             isPalmAnalyzing={isPalmAnalyzing}
             t={t}
@@ -1431,7 +1588,10 @@ export default function Home() {
                   maxSize={10}
                   allowCamera
                   value={palmImage}
-                  onChange={setPalmImage}
+                  onChange={(nextImage) => {
+                    setPalmImage(nextImage);
+                    setPalmAnalysisError(null);
+                  }}
                   onAnalyze={handlePalmAnalyze}
                   isAnalyzing={isPalmAnalyzing}
                   disabled={isLoading || isCheckingAuth}
@@ -1750,6 +1910,18 @@ export default function Home() {
                   </div>
                 ))}
 
+                {palmAnalysisError && selectedService === "palmistry" && (
+                  <PalmAnalysisErrorCard
+                    message={palmAnalysisError.message}
+                    onRetry={() => handlePalmAnalyze(palmAnalysisError.image)}
+                    onReplace={() => {
+                      setPalmImage(palmAnalysisError.image);
+                      setPalmAnalysisError(null);
+                    }}
+                    isLoading={isLoading || isPalmAnalyzing}
+                  />
+                )}
+
                 <div ref={bottomRef} />
               </div>
             </div>
@@ -1774,14 +1946,18 @@ export default function Home() {
 
               {/* Input bar */}
               <div className="mx-auto max-w-2xl px-3 pb-3 pt-2.5 sm:pb-4">
-                {selectedService === "palmistry" && !activeChatHasPalmImage ? (
+                {selectedService === "palmistry" &&
+                (!activeChatHasPalmImage || palmAnalysisError || palmImage) ? (
                   <ImageUploader
                     mode="palmistry"
                     accept="image/*"
                     maxSize={10}
                     allowCamera
                     value={palmImage}
-                    onChange={setPalmImage}
+                    onChange={(nextImage) => {
+                      setPalmImage(nextImage);
+                      setPalmAnalysisError(null);
+                    }}
                     onAnalyze={handlePalmAnalyze}
                     isAnalyzing={isPalmAnalyzing}
                     disabled={isLoading || isCheckingAuth}
@@ -1805,7 +1981,17 @@ export default function Home() {
       )}
 
       {/* ── Global styles & keyframes ── */}
-      {isPalmAnalyzing && <PalmAnalysisLoading message={palmLoadingMessage} />}
+      {isPalmAnalyzing && palmScanImageUrl && (
+        <PalmScanAnimation
+          imageUrl={palmScanImageUrl}
+          isComplete={isPalmScanReady}
+          onAnimationFinished={() => {
+            setIsPalmAnalyzing(false);
+            setIsPalmScanReady(false);
+            setPalmScanImageUrl("");
+          }}
+        />
+      )}
 
       <style>{`
         @keyframes spinCW {
@@ -1921,58 +2107,40 @@ function MessageContent({ message }: { message: Message }) {
   return <p className="whitespace-pre-wrap">{message.content}</p>;
 }
 
-function PalmAnalysisLoading({ message }: { message: string }) {
+function PalmAnalysisErrorCard({
+  message,
+  onRetry,
+  onReplace,
+  isLoading,
+}: {
+  message: string;
+  onRetry: () => void;
+  onReplace: () => void;
+  isLoading: boolean;
+}) {
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#020817]/82 px-5 backdrop-blur-2xl">
-      <div
-        className="relative w-full max-w-[390px] overflow-hidden rounded-[28px] border border-white/[0.10] p-7 text-center"
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.045))",
-          boxShadow:
-            "0 24px 80px rgba(0,0,0,0.48), 0 0 48px rgba(56,189,248,0.18)",
-        }}
-      >
-        <div
-          className="absolute inset-x-0 top-0 h-32 opacity-80"
-          style={{
-            background:
-              "radial-gradient(circle at 50% 0%, rgba(56,189,248,0.24), transparent 62%)",
-          }}
-        />
-
-        <div className="relative mx-auto flex h-24 w-24 items-center justify-center">
-          <div className="absolute inset-0 rounded-full border border-sky-300/20" />
-          <div className="absolute inset-2 rounded-full border border-sky-300/30 border-t-sky-200/90 animate-spin" />
-          <div className="absolute inset-5 rounded-full bg-sky-300/[0.10] blur-sm" />
-          <span className="relative text-3xl">+</span>
-        </div>
-
-        <h2 className="relative mt-5 text-[24px] font-semibold tracking-tight text-white/95">
-          Analyzing Your Palm...
-        </h2>
-        <p className="relative mt-3 min-h-6 text-[14px] text-sky-100/72">
-          {message}
-        </p>
-
-        <div className="relative mt-6 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
-          <div
-            className="h-full rounded-full"
-            style={{
-              width: "46%",
-              background: "linear-gradient(90deg, #38bdf8, #1d4ed8)",
-              animation: "analysisBar 1.4s ease-in-out infinite alternate",
-            }}
-          />
+    <div className="flex justify-start">
+      <div className="max-w-[92%] rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-[14px] leading-6 text-rose-50/90 sm:max-w-[72%]">
+        <p>{message}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onRetry}
+            disabled={isLoading}
+            className="rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Retry Analysis
+          </button>
+          <button
+            type="button"
+            onClick={onReplace}
+            disabled={isLoading}
+            className="rounded-full border border-white/10 px-3 py-1.5 text-[12px] font-semibold text-white/70 transition hover:border-sky-300/35 hover:text-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Replace Photo
+          </button>
         </div>
       </div>
-
-      <style>{`
-        @keyframes analysisBar {
-          from { transform: translateX(-18%); }
-          to { transform: translateX(136%); }
-        }
-      `}</style>
     </div>
   );
 }
@@ -1989,6 +2157,7 @@ function UniversalMobileLanding({
   setSelectedLanguage,
   palmImage,
   setPalmImage,
+  clearPalmAnalysisError,
   handlePalmAnalyze,
   isPalmAnalyzing,
   t,
@@ -2004,6 +2173,7 @@ function UniversalMobileLanding({
   setSelectedLanguage: (language: LanguageCode) => void;
   palmImage: UploadedImage | null;
   setPalmImage: (image: UploadedImage | null) => void;
+  clearPalmAnalysisError: () => void;
   handlePalmAnalyze: (image: UploadedImage) => void;
   isPalmAnalyzing: boolean;
   t: UiText;
@@ -2080,7 +2250,10 @@ function UniversalMobileLanding({
                 maxSize={10}
                 allowCamera
                 value={palmImage}
-                onChange={setPalmImage}
+                onChange={(nextImage) => {
+                  setPalmImage(nextImage);
+                  clearPalmAnalysisError();
+                }}
                 onAnalyze={handlePalmAnalyze}
                 isAnalyzing={isPalmAnalyzing}
                 disabled={isLoading}

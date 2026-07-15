@@ -87,14 +87,16 @@ function parseImageMessageContent(content: string) {
     if (
       isRecord(payload) &&
       payload.type === "bhagya.image" &&
-      typeof payload.imageUrl === "string"
+      (typeof payload.imageUrl === "string" ||
+        typeof payload.storagePath === "string")
     ) {
       return {
         content:
           typeof payload.text === "string"
             ? payload.text.slice(0, 3000)
             : "Palm photo uploaded for analysis.",
-        imageUrl: payload.imageUrl,
+        imageUrl:
+          typeof payload.imageUrl === "string" ? payload.imageUrl : undefined,
       };
     }
   } catch {

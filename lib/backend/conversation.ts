@@ -20,15 +20,18 @@ function parseImageMessageContent(content: string) {
       !Array.isArray(payload) &&
       "type" in payload &&
       payload.type === "bhagya.image" &&
-      "imageUrl" in payload &&
-      typeof payload.imageUrl === "string"
+      (("imageUrl" in payload && typeof payload.imageUrl === "string") ||
+        ("storagePath" in payload && typeof payload.storagePath === "string"))
     ) {
       return {
         content:
           "text" in payload && typeof payload.text === "string"
             ? payload.text
             : "Palm photo uploaded for analysis.",
-        imageUrl: payload.imageUrl,
+        imageUrl:
+          "imageUrl" in payload && typeof payload.imageUrl === "string"
+            ? payload.imageUrl
+            : undefined,
       };
     }
   } catch {
