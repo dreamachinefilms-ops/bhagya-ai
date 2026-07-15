@@ -2978,6 +2978,89 @@ function TarotCardArt({ card }: { card: DrawnTarotCard }) {
   );
 }
 
+function TarotMandalaIcon() {
+  return (
+    <svg
+      viewBox="0 0 120 120"
+      aria-hidden="true"
+      className="h-[52%] w-[52%] drop-shadow-[0_0_18px_rgba(125,211,252,0.38)]"
+      fill="none"
+    >
+      <circle cx="60" cy="60" r="39" stroke="rgba(186,230,253,0.42)" strokeWidth="1.2" />
+      <circle cx="60" cy="60" r="25" stroke="rgba(250,204,21,0.26)" strokeWidth="1" />
+      <circle cx="60" cy="60" r="7" fill="rgba(125,211,252,0.22)" stroke="rgba(224,242,254,0.7)" />
+      {Array.from({ length: 12 }).map((_, index) => (
+        <g key={index} transform={`rotate(${index * 30} 60 60)`}>
+          <path
+            d="M60 21 C66 36 66 44 60 54 C54 44 54 36 60 21Z"
+            stroke="rgba(186,230,253,0.58)"
+            strokeWidth="1"
+            fill="rgba(56,189,248,0.075)"
+          />
+          <path
+            d="M60 33 C64 43 64 50 60 57 C56 50 56 43 60 33Z"
+            stroke="rgba(250,204,21,0.22)"
+            strokeWidth="0.8"
+          />
+        </g>
+      ))}
+      {Array.from({ length: 8 }).map((_, index) => (
+        <g key={`ray-${index}`} transform={`rotate(${index * 45} 60 60)`}>
+          <path
+            d="M60 13 L62.5 25 L60 31 L57.5 25 Z"
+            fill="rgba(125,211,252,0.16)"
+            stroke="rgba(224,242,254,0.34)"
+            strokeWidth="0.8"
+          />
+        </g>
+      ))}
+      <circle cx="60" cy="60" r="48" stroke="rgba(125,211,252,0.16)" strokeDasharray="2 8" />
+    </svg>
+  );
+}
+
+function TarotCardBack({
+  selected,
+  selectionNumber,
+}: {
+  selected: boolean;
+  selectionNumber?: number;
+}) {
+  return (
+    <span
+      className={`relative block h-full w-full overflow-hidden rounded-[15px] transition duration-300 ${
+        selected
+          ? "-translate-y-1 scale-[1.035]"
+          : "group-hover:-translate-y-1 group-hover:scale-[1.018]"
+      }`}
+      style={{
+        background:
+          "radial-gradient(circle at 50% 30%, rgba(56,189,248,0.32), transparent 30%), radial-gradient(circle at 50% 82%, rgba(250,204,21,0.12), transparent 32%), linear-gradient(155deg, #111a3a 0%, #061225 54%, #020817 100%)",
+        boxShadow: selected
+          ? "inset 0 1px 0 rgba(255,255,255,0.16), inset 0 0 34px rgba(56,189,248,0.18), 0 18px 48px rgba(56,189,248,0.24)"
+          : "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 28px rgba(56,189,248,0.1), 0 12px 30px rgba(2,8,23,0.38)",
+      }}
+    >
+      <span className="absolute inset-[7px] rounded-[12px] border border-sky-200/18" />
+      <span className="absolute inset-[13px] rounded-[9px] border border-yellow-200/[0.12]" />
+      <span className="absolute left-1/2 top-3 h-1 w-10 -translate-x-1/2 rounded-full bg-sky-200/35" />
+      <span className="absolute bottom-3 left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-sky-200/35" />
+      <span className="absolute inset-0 bg-[linear-gradient(115deg,transparent_18%,rgba(255,255,255,0.08)_43%,transparent_62%)] opacity-55 transition group-hover:opacity-80" />
+      <span className="absolute inset-0 flex items-center justify-center">
+        <TarotMandalaIcon />
+      </span>
+      <span className="absolute inset-x-0 bottom-[17%] text-center text-[9px] font-semibold uppercase tracking-[0.22em] text-sky-100/42 sm:text-[10px]">
+        Bhagya
+      </span>
+      {selected && (
+        <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-sky-200/50 bg-sky-300/20 text-[11px] font-semibold text-white shadow-[0_0_18px_rgba(56,189,248,0.35)]">
+          {selectionNumber}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function TarotExperience({
   compact = false,
   status,
@@ -3028,9 +3111,13 @@ function TarotExperience({
 
   return (
     <div
-      className={`mx-auto w-full rounded-[24px] border border-sky-300/12 bg-white/[0.045] p-4 text-left shadow-[0_22px_80px_rgba(14,165,233,0.18)] backdrop-blur-2xl ${
+      className={`mx-auto w-full rounded-[24px] border border-sky-200/15 bg-white/[0.055] p-4 text-left shadow-[0_24px_90px_rgba(14,165,233,0.2)] backdrop-blur-2xl ${
         compact ? "max-w-2xl" : "max-w-xl"
       }`}
+      style={{
+        background:
+          "linear-gradient(145deg, rgba(255,255,255,0.07), rgba(56,189,248,0.035)), rgba(2,8,23,0.78)",
+      }}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -3132,26 +3219,19 @@ function TarotExperience({
                   aria-pressed={selected}
                   onClick={() => onToggleCard(cardIndex)}
                   disabled={isLoading}
-                  className={`group aspect-[2/3] rounded-xl border transition duration-200 ${
+                  className={`group aspect-[2/3] rounded-[18px] border p-[1px] transition duration-300 ${
                     selected
-                      ? "border-sky-300/70 bg-sky-300/12 shadow-[0_18px_45px_rgba(56,189,248,0.24)]"
-                      : "border-white/[0.08] bg-white/[0.035] hover:border-sky-300/35"
+                      ? "border-sky-200/75 bg-sky-300/15 shadow-[0_18px_52px_rgba(56,189,248,0.32)]"
+                      : "border-white/[0.09] bg-white/[0.035] shadow-[0_10px_28px_rgba(0,0,0,0.26)] hover:border-sky-200/38 hover:bg-sky-300/8 hover:shadow-[0_16px_42px_rgba(56,189,248,0.18)]"
                   } disabled:cursor-not-allowed`}
                   style={{
-                    transform: `translateY(${selected ? "-8px" : "0"}) rotate(${angle}deg)`,
+                    transform: `rotate(${angle}deg)`,
                   }}
                 >
-                  <span
-                    className="flex h-full w-full items-center justify-center rounded-[11px] text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-100/55"
-                    style={{
-                      background:
-                        "radial-gradient(circle at 50% 18%, rgba(56,189,248,0.24), transparent 32%), linear-gradient(160deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
-                    }}
-                  >
-                    {selected
-                      ? selectedIndexes.indexOf(cardIndex) + 1
-                      : "Bhagya"}
-                  </span>
+                  <TarotCardBack
+                    selected={selected}
+                    selectionNumber={selectedIndexes.indexOf(cardIndex) + 1}
+                  />
                 </button>
               );
             })}
