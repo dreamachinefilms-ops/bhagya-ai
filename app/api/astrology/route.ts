@@ -6,17 +6,28 @@ import {
   isCompleteBirthDetails,
   upsertBirthDetails,
 } from "@/lib/backend/birthDetailsMemory";
-import { saveAiExchange } from "@/lib/backend/chats";
-import { buildConversationText } from "@/lib/backend/conversation";
+import { listChatMessages, saveAiExchange } from "@/lib/backend/chats";
+import {
+  buildConversationText,
+  sanitizeMessages,
+} from "@/lib/backend/conversation";
 import {
   badRequestResponse,
   rateLimitedResponse,
   safeErrorResponse,
 } from "@/lib/backend/errors";
-import { callBhagyaOpenAI } from "@/lib/backend/openai";
+import { callGroundedBhagyaOpenAI } from "@/lib/guidance/generate";
+import { findUnsupportedUnknownTimeAstrologyClaims } from "@/lib/guidance/groundingChecks";
 import { checkRateLimit } from "@/lib/backend/rateLimit";
 import { validateAiRequestBody } from "@/lib/backend/validation";
-import { buildAstrologyPrompt } from "@/lib/prokerala/buildAstrologyPrompt";
+import { buildAstrologyPrompt } from "@/lib/astrology/prompt";
+import {
+  finalizeGuidanceResponse,
+  getFirstName,
+  GUIDANCE_OUTPUT_LIMITS,
+  resolveFirstNameForResponse,
+  selectGuidanceResponseDepth,
+} from "@/lib/guidance/promptCore";
 import {
   buildProkeralaDateTime,
   callProkeralaKundli,
@@ -104,14 +115,28 @@ export async function POST(request: Request) {
       return rateLimitedResponse(languageCode);
     }
 
-    const conversationText = buildConversationText(messages, question);
-    const [savedProfile, savedBirthDetails] = await Promise.all([
+    const [savedProfile, savedBirthDetails, storedMessages] = await Promise.all([
       getSavedUserProfile({ request, userId: user.id }),
       getSavedBirthDetails({
         request,
         userId: user.id,
       }),
+      chatId
+        ? listChatMessages({ request, userId: user.id, chatId })
+        : Promise.resolve(messages),
     ]);
+    const cleanHistory = sanitizeMessages(storedMessages, {
+      service: "astrology",
+      limit: 18,
+    });
+    const historyMessages = cleanHistory.map((message) => ({
+      role: message.role === "assistant" ? "assistant" as const : "user" as const,
+      content: message.content,
+    }));
+    const conversationText = buildConversationText(storedMessages, question, {
+      service: "astrology",
+      limit: 18,
+    });
 
     if (!isCompleteBirthDetails(savedBirthDetails)) {
       return birthDetailsRequiredResponse();
@@ -183,18 +208,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ answer, ...saved });
     }
 
-    const answer = await callBhagyaOpenAI({
-      instructions: buildAstrologyPrompt({
+    const actualFirstName = getFirstName(
+      savedProfile?.fullName || savedProfile?.firstName,
+    );
+    const firstNameForResponse = resolveFirstNameForResponse({
+      fullName: savedProfile?.fullName,
+      firstName: savedProfile?.firstName,
+      messages: historyMessages,
+      isInitialReading: !historyMessages.some(
+        (message) => message.role === "assistant",
+      ),
+      userMessage: question,
+    });
+    const responseDepth = selectGuidanceResponseDepth(question);
+    const prompt = buildAstrologyPrompt({
         language,
         languageCode,
         conversationText,
+        historyMessages,
+        currentQuestion: question,
         birthDetails,
         location,
         prokeralaData: kundliResult.data,
-        userFirstName: savedProfile?.firstName,
-        usedSavedBirthDetails: true,
-      }),
+        firstName: firstNameForResponse,
+        responseDepth,
+      });
+    const rawAnswer = await callGroundedBhagyaOpenAI({
+      instructions: prompt.instructions,
       input: conversationText,
+      maxOutputTokens: GUIDANCE_OUTPUT_LIMITS[responseDepth],
+      validate: (candidate) =>
+        findUnsupportedUnknownTimeAstrologyClaims(
+          candidate,
+          birthTimeKnown,
+        ),
+    });
+    const answer = finalizeGuidanceResponse({
+      answer: rawAnswer,
+      depth: responseDepth,
+      evidence: prompt.evidence,
+      history: historyMessages,
+      firstName: actualFirstName,
+      fullName: savedProfile?.fullName,
+      allowJi: /\b(?:call|address)\b.{0,30}\bji\b/i.test(question),
     });
     const saved = await saveAiExchange({
       request,

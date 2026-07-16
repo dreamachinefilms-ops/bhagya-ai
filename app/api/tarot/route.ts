@@ -2,28 +2,44 @@ import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/backend/auth";
 import { getSavedUserProfile } from "@/lib/backend/birthDetailsMemory";
-import { findUserChat, saveAiExchange } from "@/lib/backend/chats";
-import { buildConversationText } from "@/lib/backend/conversation";
+import {
+  findUserChat,
+  listChatMessages,
+  saveAiExchange,
+} from "@/lib/backend/chats";
+import {
+  buildConversationText,
+  sanitizeMessages,
+} from "@/lib/backend/conversation";
 import {
   badRequestResponse,
   rateLimitedResponse,
   safeErrorResponse,
 } from "@/lib/backend/errors";
-import { callBhagyaOpenAI } from "@/lib/backend/openai";
+import { callGroundedBhagyaOpenAI } from "@/lib/guidance/generate";
+import { findUnsupportedTarotCards } from "@/lib/guidance/groundingChecks";
 import { checkRateLimit } from "@/lib/backend/rateLimit";
 import { createSupabaseUserClient } from "@/lib/backend/supabaseUserClient";
 import { isUuid, validateAiRequestBody } from "@/lib/backend/validation";
 import { getTarotCard, tarotDeck } from "@/lib/tarot/deck";
 import {
   buildDrawnCard,
-  buildTarotFollowUpPrompt,
-  buildTarotInitialPrompt,
   getTarotSpread,
   isTarotSpreadType,
   type DrawnTarotCard,
   type TarotReadingSummary,
   type TarotSpreadType,
 } from "@/lib/tarot/reading";
+import {
+  buildTarotFollowUpPrompt,
+  buildTarotInitialPrompt,
+} from "@/lib/tarot/prompt";
+import {
+  finalizeGuidanceResponse,
+  getFirstName,
+  GUIDANCE_OUTPUT_LIMITS,
+  resolveFirstNameForResponse,
+} from "@/lib/guidance/promptCore";
 
 const routeName = "api/tarot";
 const reversalProbability = 0.25;
@@ -448,23 +464,54 @@ async function handleReveal({
     });
   });
   const conversationText = `User: ${session.question}`;
+  const historyMessages = [
+    { role: "user" as const, content: String(session.question) },
+  ];
   const profile = await getSavedUserProfile({ request, userId }).catch(() => null);
+  const actualFirstName = getFirstName(profile?.fullName || profile?.firstName);
+  const firstNameForResponse = resolveFirstNameForResponse({
+    fullName: profile?.fullName,
+    firstName: profile?.firstName,
+    messages: historyMessages,
+    isInitialReading: true,
+    userMessage: String(session.question),
+  });
   let interpretation = "";
   let status = "complete";
 
   try {
-    interpretation = await callBhagyaOpenAI({
-      instructions: buildTarotInitialPrompt({
+    const prompt = buildTarotInitialPrompt({
         language: String(session.language || "English"),
         languageCode: String(session.language_code || "english"),
-        firstName: profile?.firstName || undefined,
+        firstName: firstNameForResponse,
         question: String(session.question),
         spreadType,
         spreadName: String(session.spread_name),
         cards: drawnCards,
         conversationText,
-      }),
+        historyMessages,
+      });
+    const rawInterpretation = await callGroundedBhagyaOpenAI({
+      instructions: prompt.instructions,
       input: conversationText,
+      maxOutputTokens: GUIDANCE_OUTPUT_LIMITS[prompt.depth],
+      validate: (candidate) =>
+        findUnsupportedTarotCards({
+          answer: candidate,
+          selectedCards: drawnCards,
+          allCardNames: tarotDeck.map((card) => card.name),
+        }),
+    });
+    interpretation = finalizeGuidanceResponse({
+      answer: rawInterpretation,
+      depth: prompt.depth,
+      evidence: prompt.evidence,
+      history: historyMessages,
+      firstName: actualFirstName,
+      fullName: profile?.fullName,
+      allowJi: /\b(?:call|address)\b.{0,30}\bji\b/i.test(
+        String(session.question),
+      ),
     });
   } catch (error) {
     console.error("[tarot] OpenAI interpretation failed", {
@@ -567,8 +614,13 @@ async function handleFollowUp(request: Request, userId: string, body: unknown) {
     return rateLimitedResponse(languageCode);
   }
 
-  const conversationText = buildConversationText(messages, question);
-  const reading = await getLatestTarotReading({ request, userId, chatId });
+  const [reading, profile, storedMessages] = await Promise.all([
+    getLatestTarotReading({ request, userId, chatId }),
+    getSavedUserProfile({ request, userId }).catch(() => null),
+    chatId
+      ? listChatMessages({ request, userId, chatId })
+      : Promise.resolve(messages),
+  ]);
 
   if (!reading) {
     const answer =
@@ -587,17 +639,54 @@ async function handleFollowUp(request: Request, userId: string, body: unknown) {
     return NextResponse.json({ answer, ...saved });
   }
 
-  const profile = await getSavedUserProfile({ request, userId }).catch(() => null);
-  const answer = await callBhagyaOpenAI({
-    instructions: buildTarotFollowUpPrompt({
-      language,
-      languageCode,
-      firstName: profile?.firstName || undefined,
-      question,
-      reading,
-      conversationText,
-    }),
+  const cleanHistory = sanitizeMessages(storedMessages, {
+    service: "tarot",
+    limit: 18,
+  });
+  const historyMessages = cleanHistory.map((message) => ({
+    role: message.role === "assistant" ? "assistant" as const : "user" as const,
+    content: message.content,
+  }));
+  const conversationText = buildConversationText(storedMessages, question, {
+    service: "tarot",
+    limit: 18,
+  });
+  const actualFirstName = getFirstName(profile?.fullName || profile?.firstName);
+  const firstNameForResponse = resolveFirstNameForResponse({
+    fullName: profile?.fullName,
+    firstName: profile?.firstName,
+    messages: historyMessages,
+    isInitialReading: false,
+    userMessage: question,
+  });
+  const prompt = buildTarotFollowUpPrompt({
+    language,
+    languageCode,
+    firstName: firstNameForResponse,
+    question,
+    reading,
+    conversationText,
+    historyMessages,
+  });
+  const rawAnswer = await callGroundedBhagyaOpenAI({
+    instructions: prompt.instructions,
     input: conversationText,
+    maxOutputTokens: GUIDANCE_OUTPUT_LIMITS[prompt.depth],
+    validate: (candidate) =>
+      findUnsupportedTarotCards({
+        answer: candidate,
+        selectedCards: reading.cards,
+        allCardNames: tarotDeck.map((card) => card.name),
+      }),
+  });
+  const answer = finalizeGuidanceResponse({
+    answer: rawAnswer,
+    depth: prompt.depth,
+    evidence: prompt.evidence,
+    history: historyMessages,
+    firstName: actualFirstName,
+    fullName: profile?.fullName,
+    allowJi: /\b(?:call|address)\b.{0,30}\bji\b/i.test(question),
   });
   const saved = await saveAiExchange({
     request,

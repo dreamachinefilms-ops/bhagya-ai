@@ -24,10 +24,12 @@ export async function callBhagyaOpenAI({
   instructions,
   input,
   imageUrl,
+  maxOutputTokens,
 }: {
   instructions: string;
   input: string;
   imageUrl?: string;
+  maxOutputTokens?: number;
 }) {
   const model = imageUrl
     ? process.env.OPENAI_VISION_MODEL ||
@@ -37,6 +39,7 @@ export async function callBhagyaOpenAI({
 
   const response = await getOpenAIClient().responses.create({
     model,
+    max_output_tokens: maxOutputTokens,
     instructions,
     input: imageUrl
       ? [

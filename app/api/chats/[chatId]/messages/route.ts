@@ -9,6 +9,7 @@ import {
 import { safeErrorResponse } from "@/lib/backend/errors";
 import { createSupabaseUserClient } from "@/lib/backend/supabaseUserClient";
 import { isUuid } from "@/lib/backend/validation";
+import { logNumerologyStage } from "@/lib/numerology/logging";
 
 const routeName = "api/chats/[chatId]/messages";
 type MessageRole = "user" | "assistant";
@@ -185,6 +186,12 @@ export async function POST(
           typeof body.languageCode === "string" ? body.languageCode : undefined,
       },
     });
+
+    if (service === "numerology") {
+      logNumerologyStage(`${role} message saved`, {
+        persistence: "shared-chat-route",
+      });
+    }
 
     return NextResponse.json({ message });
   } catch (error) {

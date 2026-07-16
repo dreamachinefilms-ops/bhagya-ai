@@ -394,6 +394,35 @@ function getPalmAnalysisErrorMessage(data: unknown, fallbackStatus: number) {
   return messages[code] || message || fallback;
 }
 
+function getNumerologyErrorMessage(
+  data: Record<string, unknown>,
+  fallbackStatus: number,
+) {
+  const error = typeof data.error === "string" ? data.error : "";
+  const messages: Record<string, string> = {
+    AUTH_REQUIRED: "Your session has expired. Please sign in again.",
+    BIRTH_PROFILE_INCOMPLETE:
+      "Complete your full name and date of birth to create your Numerology profile.",
+    CHAT_NOT_FOUND: "The Numerology conversation could not be found.",
+    CALCULATION_FAILED: "Bhagya could not calculate your Numerology profile.",
+    PROFILE_SAVE_FAILED:
+      "Your numbers were calculated, but the profile could not be saved.",
+    PROFILE_LOAD_FAILED:
+      "Your saved Numerology profile could not be loaded. Please try again.",
+    BIRTH_PROFILE_LOAD_FAILED:
+      "Your birth profile could not be loaded. Please try again.",
+    MESSAGE_SAVE_FAILED:
+      "Your Number Blueprint could not be saved. Please try again.",
+    INTERPRETATION_FAILED:
+      "Your numbers are ready, but Bhagya could not complete the interpretation.",
+  };
+
+  if (messages[error]) return messages[error];
+  if (typeof data.message === "string") return data.message;
+  if (typeof data.answer === "string") return data.answer;
+  return `Your Number Blueprint could not be prepared. Error ${fallbackStatus}.`;
+}
+
 function isServiceType(value: unknown): value is ServiceType {
   return (
     value === "astrology" ||
@@ -975,11 +1004,7 @@ export default function Home() {
       }
 
       if (!res.ok || !isRecord(data.message)) {
-        throw new Error(
-          typeof data.answer === "string"
-            ? data.answer
-            : "Your Number Blueprint could not be prepared. Please try again."
-        );
+        throw new Error(getNumerologyErrorMessage(data, res.status));
       }
 
       const blueprintMessage = mapDbMessage(data.message, "numerology");
@@ -1697,7 +1722,7 @@ export default function Home() {
         return;
       }
 
-      const finalAnswer = data.answer || t.silentError;
+      const finalAnswer = data.answer || data.message || t.silentError;
       // eslint-disable-next-line react-hooks/purity -- event-handler timing is intentionally measured around the request
       const elapsed = Date.now() - requestStartedAt;
       const targetDelay = getRealisticReplyDelay(finalAnswer);

@@ -41,7 +41,12 @@ function parseImageMessageContent(content: string) {
   return { content };
 }
 
-export function sanitizeMessages(messages: unknown[]) {
+export function sanitizeMessages(
+  messages: unknown[],
+  options?: { service?: string; limit?: number },
+) {
+  const limit = options?.limit ?? 12;
+
   return messages
     .filter(isMessageRecord)
     .filter((message) => {
@@ -50,10 +55,11 @@ export function sanitizeMessages(messages: unknown[]) {
       return (
         content.trim() &&
         !message.isLoading &&
-        !/\bconsulting\b/i.test(content)
+        !/\bconsulting\b/i.test(content) &&
+        (!options?.service || message.service === options.service)
       );
     })
-    .slice(-12)
+    .slice(-limit)
     .map((message) => {
       const rawContent =
         typeof message.content === "string" ? message.content : "";
@@ -74,9 +80,10 @@ export function sanitizeMessages(messages: unknown[]) {
 
 export function buildConversationText(
   messages: unknown[],
-  fallbackQuestion: string
+  fallbackQuestion: string,
+  options?: { service?: string; limit?: number },
 ) {
-  const cleanMessages = sanitizeMessages(messages);
+  const cleanMessages = sanitizeMessages(messages, options);
 
   return cleanMessages.length > 0
     ? cleanMessages

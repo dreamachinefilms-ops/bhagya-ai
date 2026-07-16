@@ -1,22 +1,38 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/backend/auth";
 import { getSavedUserProfile } from "@/lib/backend/birthDetailsMemory";
-import { findUserChat, saveAiExchange } from "@/lib/backend/chats";
-import { buildConversationText } from "@/lib/backend/conversation";
+import {
+  findUserChat,
+  listChatMessages,
+  saveAiExchange,
+} from "@/lib/backend/chats";
+import {
+  buildConversationText,
+  sanitizeMessages,
+} from "@/lib/backend/conversation";
 import { createSupabaseUserClient } from "@/lib/backend/supabaseUserClient";
 import {
   badRequestResponse,
   rateLimitedResponse,
 } from "@/lib/backend/errors";
 import { callBhagyaOpenAI } from "@/lib/backend/openai";
+import { callGroundedBhagyaOpenAI } from "@/lib/guidance/generate";
+import { findUnsupportedPalmClaims } from "@/lib/guidance/groundingChecks";
 import { checkRateLimit } from "@/lib/backend/rateLimit";
 import { isUuid, validateAiRequestBody } from "@/lib/backend/validation";
 import {
+  buildPalmistryEvidence,
   buildPalmistryPrompt,
-  hasPalmEvidence,
   sanitizePalmAnalysisContext,
   type PalmAnalysisContext,
-} from "@/lib/palmistry/palmistryPrompt";
+} from "@/lib/palmistry/prompt";
+import {
+  finalizeGuidanceResponse,
+  getFirstName,
+  GUIDANCE_OUTPUT_LIMITS,
+  resolveFirstNameForResponse,
+  selectGuidanceResponseDepth,
+} from "@/lib/guidance/promptCore";
 import { buildPalmImageMissingResponse } from "@/lib/guidanceResponses";
 
 export const runtime = "nodejs";
@@ -417,20 +433,39 @@ async function handleImageAnalysisFromStorage({
   }
 
   const conversationText = buildConversationText(messages, question);
+  const historyMessages = sanitizeMessages(messages, {
+    service: "palmistry",
+    limit: 18,
+  }).map((message) => ({
+    role: message.role === "assistant" ? "assistant" as const : "user" as const,
+    content: message.content,
+  }));
   const profile = await getSavedUserProfile({ request, userId }).catch(() => null);
+  const actualFirstName = getFirstName(profile?.fullName || profile?.firstName);
+  const firstNameForResponse = resolveFirstNameForResponse({
+    fullName: profile?.fullName,
+    firstName: profile?.firstName,
+    messages: historyMessages,
+    isInitialReading: true,
+    userMessage: question,
+  });
 
   try {
+    const prompt = buildPalmistryPrompt({
+      language,
+      languageCode,
+      conversationText,
+      historyMessages,
+      firstName: firstNameForResponse,
+      currentQuestion: question,
+      wantsJson: true,
+      responseDepth: "deep",
+    });
     const rawAnswer = await callBhagyaOpenAI({
-      instructions: buildPalmistryPrompt({
-        language,
-        languageCode,
-        conversationText,
-        firstName: profile?.firstName || undefined,
-        currentQuestion: question,
-        wantsJson: true,
-      }),
+      instructions: prompt.instructions,
       input: conversationText,
       imageUrl: signedData.signedUrl,
+      maxOutputTokens: 1600,
     });
     const parsedAnswer = parsePalmReadingJson(rawAnswer);
 
@@ -443,6 +478,16 @@ async function handleImageAnalysisFromStorage({
       );
     }
 
+    const parsedEvidence = buildPalmistryEvidence(parsedAnswer.context);
+
+    if (!parsedAnswer.context || parsedEvidence.length === 0) {
+      return apiError(
+        502,
+        "PALM_CONTEXT_MISSING",
+        "Bhagya could not preserve enough visible palm detail for reliable follow-up guidance. Please try the analysis again."
+      );
+    }
+
     const imageMessage = buildImageMessageContent({
       storagePath,
       signedUrl: signedData.signedUrl,
@@ -451,7 +496,15 @@ async function handleImageAnalysisFromStorage({
       size: fileSize,
       palmContext: parsedAnswer.context,
     });
-    const answer = parsedAnswer.reading || rawAnswer;
+    const answer = finalizeGuidanceResponse({
+      answer: parsedAnswer.reading || rawAnswer,
+      depth: "deep",
+      evidence: parsedEvidence,
+      history: historyMessages,
+      firstName: actualFirstName,
+      fullName: profile?.fullName,
+      allowJi: /\b(?:call|address)\b.{0,30}\bji\b/i.test(question),
+    });
 
     try {
       await savePalmReadingMessages({
@@ -519,11 +572,15 @@ async function handleTextPalmistry({
     return rateLimitedResponse(languageCode);
   }
 
-  const conversationText = buildConversationText(messages, question);
-  const rawBody = isRecord(body) ? body : {};
-  const palmContext = extractPalmContextFromMessages(rawBody.messages);
+  const [storedMessages, profile] = await Promise.all([
+    chatId
+      ? listChatMessages({ request, userId, chatId })
+      : Promise.resolve(messages),
+    getSavedUserProfile({ request, userId }).catch(() => null),
+  ]);
+  const palmContext = extractPalmContextFromMessages(storedMessages);
 
-  if (!hasPalmEvidence(rawBody, conversationText)) {
+  if (!palmContext) {
     const answer = buildPalmImageMissingResponse(languageCode);
     const saved = await saveAiExchange({
       request,
@@ -539,17 +596,51 @@ async function handleTextPalmistry({
     return NextResponse.json({ answer, ...saved });
   }
 
-  const profile = await getSavedUserProfile({ request, userId }).catch(() => null);
-  const answer = await callBhagyaOpenAI({
-    instructions: buildPalmistryPrompt({
-      language,
-      languageCode,
-      conversationText,
-      firstName: profile?.firstName || undefined,
-      currentQuestion: question,
-      palmContext,
-    }),
+  const cleanHistory = sanitizeMessages(storedMessages, {
+    service: "palmistry",
+    limit: 18,
+  });
+  const historyMessages = cleanHistory.map((message) => ({
+    role: message.role === "assistant" ? "assistant" as const : "user" as const,
+    content: message.content,
+  }));
+  const conversationText = buildConversationText(storedMessages, question, {
+    service: "palmistry",
+    limit: 18,
+  });
+  const actualFirstName = getFirstName(profile?.fullName || profile?.firstName);
+  const firstNameForResponse = resolveFirstNameForResponse({
+    fullName: profile?.fullName,
+    firstName: profile?.firstName,
+    messages: historyMessages,
+    isInitialReading: false,
+    userMessage: question,
+  });
+  const responseDepth = selectGuidanceResponseDepth(question);
+  const prompt = buildPalmistryPrompt({
+    language,
+    languageCode,
+    conversationText,
+    historyMessages,
+    firstName: firstNameForResponse,
+    currentQuestion: question,
+    palmContext,
+    responseDepth,
+  });
+  const rawAnswer = await callGroundedBhagyaOpenAI({
+    instructions: prompt.instructions,
     input: conversationText,
+    maxOutputTokens: GUIDANCE_OUTPUT_LIMITS[responseDepth],
+    validate: (candidate) => findUnsupportedPalmClaims(candidate, palmContext),
+  });
+  const answer = finalizeGuidanceResponse({
+    answer: rawAnswer,
+    depth: responseDepth,
+    evidence: prompt.evidence,
+    history: historyMessages,
+    firstName: actualFirstName,
+    fullName: profile?.fullName,
+    allowJi: /\b(?:call|address)\b.{0,30}\bji\b/i.test(question),
   });
   const saved = await saveAiExchange({
     request,

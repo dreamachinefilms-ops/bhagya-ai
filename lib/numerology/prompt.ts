@@ -1,27 +1,28 @@
 import { NUMEROLOGY_MEANINGS } from "./meanings.ts";
+import {
+  buildBhagyaCorePrompt,
+  createGuidanceResponsePlan,
+  selectGuidanceResponseDepth,
+  type GuidanceEvidence,
+  type GuidanceHistoryMessage,
+} from "../guidance/promptCore.ts";
 import type {
   NumerologyProfile,
   NumerologyResponseDepth,
 } from "./types.ts";
 
-const BRIEF_TOPICS = new Set([
-  "okay", "ok", "yes", "career", "love", "money", "strengths", "challenges",
-]);
-
 export function selectNumerologyResponseDepth(
   message: string,
 ): NumerologyResponseDepth {
-  const normalized = message.trim().toLowerCase();
-  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
-
   if (
-    /\b(explain everything|full profile|all my numbers|in detail|detailed reading|deep reading|compare all|heartbroken|grieving|feel lost|deeply worried|life-changing)\b/i.test(normalized)
+    /\b(heartbroken|grieving|feel lost|deeply worried|life-changing)\b/i.test(
+      message,
+    )
   ) {
     return "deep";
   }
 
-  if (wordCount <= 2 || BRIEF_TOPICS.has(normalized)) return "brief";
-  return "standard";
+  return selectGuidanceResponseDepth(message);
 }
 
 export function isCalculationExplanationRequest(message: string) {
@@ -75,6 +76,7 @@ export function buildNumerologyPrompt({
   language,
   languageCode,
   history,
+  historyMessages,
   question,
 }: {
   profile: NumerologyProfile;
@@ -82,14 +84,10 @@ export function buildNumerologyPrompt({
   language: string;
   languageCode: string;
   history: string;
+  historyMessages: GuidanceHistoryMessage[];
   question: string;
 }) {
   const depth = selectNumerologyResponseDepth(question);
-  const lengthRule = {
-    brief: "Reply briefly, usually 20-70 words.",
-    standard: "Give a focused answer, usually 60-150 words.",
-    deep: "Give a connected deeper reading, usually 140-300 words.",
-  }[depth];
 
   const toPromptNumber = (calculation: {
     reducedNumber: number;
@@ -98,6 +96,17 @@ export function buildNumerologyPrompt({
     number: calculation.reducedNumber,
     isMasterNumber: calculation.isMasterNumber,
   });
+  const profileNumbers = [
+    ...Object.values(profile.coreNumbers),
+    profile.cycles.personalYear,
+    profile.cycles.personalMonth,
+    profile.cycles.personalDay,
+  ];
+  const suppliedMeanings = Object.fromEntries(
+    [...new Set(profileNumbers.map((item) => item.reducedNumber))].map(
+      (number) => [number, NUMEROLOGY_MEANINGS[number]],
+    ),
+  );
   const suppliedProfile = {
     coreNumbers: Object.fromEntries(
       Object.entries(profile.coreNumbers).map(([key, calculation]) => [
@@ -111,15 +120,30 @@ export function buildNumerologyPrompt({
       personalDay: toPromptNumber(profile.cycles.personalDay),
       calculatedForDate: profile.cycles.calculatedForDate,
     },
-    meanings: NUMEROLOGY_MEANINGS,
+    meanings: suppliedMeanings,
   };
+  const evidence = buildNumerologyEvidence(profile, question);
+  const plan = createGuidanceResponsePlan({
+    service: "numerology",
+    userMessage: question,
+    relevantEvidence: evidence,
+    history: historyMessages,
+    useFirstName: Boolean(firstName),
+    responseLength: depth,
+  });
 
-  return `
-You are Bhagya, a warm and perceptive spiritual guidance companion.
+  return {
+    depth,
+    evidence,
+    instructions: `
+${buildBhagyaCorePrompt({
+  service: "numerology",
+  language,
+  firstName,
+  plan,
+})}
 
-Language: ${language}
-Language code: ${languageCode}
-User first name: ${firstName || "not supplied"}
+Numerology language code: ${languageCode}
 
 You are continuing a Numerology conversation using numbers already calculated deterministically by the application.
 
@@ -143,22 +167,48 @@ Conversation style:
 - Answer the actual question first and focus on the relevant numbers only.
 - Connect numbers when their contrast is genuinely useful.
 - Do not repeat the complete profile unless explicitly asked.
-- Use the first name sparingly, never automatically at the start.
-- Sound warm, observant, intelligent, personal, and lightly mystical.
-- Vary openings and sentence structure. Avoid report-like wording.
-- A follow-up question is optional; ask at most one useful question.
-- Do not repeatedly ask whether the user wants a deeper reading.
 - For "yes" or "tell me more", continue the most recent thread from history.
 - For "okay", respond naturally and briefly without repeating the profile.
 - Treat Personal Month and Personal Day as short-term themes and never as guarantees of specific events.
-
-Length:
-${lengthRule}
-Do not pad the response.
+- State calculated values directly, for example "Your calculated Life Path is 7"; never hedge about whether the saved number might be different.
 
 Safety:
 - No medical diagnosis, death prediction, fertility prediction, guaranteed marriage date, guaranteed financial result, or legal certainty.
 - Do not claim Numerology scientifically proves personality or destiny.
 - Reply only in ${language}. For Hinglish, use Roman Hindi-English.
-  `.trim();
+  `.trim(),
+  };
+}
+
+export function buildNumerologyEvidence(
+  profile: NumerologyProfile,
+  question: string,
+): GuidanceEvidence[] {
+  const values = profile.coreNumbers;
+  const cycles = profile.cycles;
+  const normalized = question.toLowerCase();
+  const evidence: GuidanceEvidence[] = [];
+  const add = (source: string, value: number) =>
+    evidence.push({ source, value: String(value), confidence: 1 });
+
+  if (/career|job|work|business|money|finance/.test(normalized)) {
+    add("calculated Life Path", values.lifePath.reducedNumber);
+    add("calculated Expression", values.expression.reducedNumber);
+    add("calculated Personality", values.personality.reducedNumber);
+    add("calculated Personal Year", cycles.personalYear.reducedNumber);
+  } else if (/love|relationship|marriage|partner|emotion/.test(normalized)) {
+    add("calculated Soul Urge", values.soulUrge.reducedNumber);
+    add("calculated Personality", values.personality.reducedNumber);
+    add("calculated Life Path", values.lifePath.reducedNumber);
+  } else if (/timing|year|month|day|when/.test(normalized)) {
+    add("calculated Personal Year", cycles.personalYear.reducedNumber);
+    add("calculated Personal Month", cycles.personalMonth.reducedNumber);
+    add("calculated Personal Day", cycles.personalDay.reducedNumber);
+  } else {
+    add("calculated Life Path", values.lifePath.reducedNumber);
+    add("calculated Expression", values.expression.reducedNumber);
+    add("calculated Personal Year", cycles.personalYear.reducedNumber);
+  }
+
+  return evidence;
 }
