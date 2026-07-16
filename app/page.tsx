@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useRef,
   type ReactNode,
@@ -3377,6 +3378,7 @@ function TarotDeck({
   const cardRefs = useRef(new Map<number, HTMLButtonElement>());
   const animationFrameRef = useRef<number | null>(null);
   const selectedIndexesRef = useRef(selectedIndexes);
+  const centeredSessionIdRef = useRef<string | null>(null);
 
   selectedIndexesRef.current = selectedIndexes;
 
@@ -3415,13 +3417,45 @@ function TarotDeck({
     });
   }
 
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
+  useLayoutEffect(() => {
+    const sessionId = activeSession.id;
+    if (centeredSessionIdRef.current === sessionId) return;
 
-    viewport.scrollLeft = 0;
-    scheduleArcUpdate();
-  }, [activeSession.id]);
+    let frameId: number | null = null;
+    let attempt = 0;
+
+    function centerDeck() {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+
+      const maximumScrollLeft = viewport.scrollWidth - viewport.clientWidth;
+      const allCardsRendered =
+        cardRefs.current.size >= activeSession.availablePositions.length;
+
+      if (maximumScrollLeft > 0 && allCardsRendered) {
+        viewport.scrollLeft = Math.max(0, maximumScrollLeft / 2);
+        centeredSessionIdRef.current = sessionId;
+        updateCardArcTransforms();
+        return;
+      }
+
+      if (attempt < 3) {
+        attempt += 1;
+        frameId = window.requestAnimationFrame(() => {
+          frameId = null;
+          centerDeck();
+        });
+      }
+    }
+
+    centerDeck();
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [activeSession.id, activeSession.availablePositions.length]);
 
   useEffect(() => {
     scheduleArcUpdate();
