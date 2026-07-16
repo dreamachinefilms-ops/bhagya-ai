@@ -2924,6 +2924,8 @@ function TarotReadingMessage({
         {reading.cards.map((card) => (
           <div
             key={`${card.position}-${card.cardId}`}
+            role="group"
+            aria-label={`${card.name}, ${card.orientation}`}
             className="rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3"
           >
             <TarotCardArt card={card} />
@@ -2934,9 +2936,15 @@ function TarotReadingMessage({
               <p className="mt-1 text-sm font-semibold leading-5 text-white">
                 {card.name}
               </p>
-              <p className="mt-1 text-xs capitalize text-white/55">
-                {card.orientation}
-              </p>
+              <span
+                className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                  card.orientation === "reversed"
+                    ? "border-violet-300/25 bg-violet-300/10 text-violet-100/80"
+                    : "border-sky-300/20 bg-sky-300/[0.08] text-sky-100/70"
+                }`}
+              >
+                {card.orientation === "reversed" ? "Reversed" : "Upright"}
+              </span>
               <p className="mt-2 text-[12px] leading-5 text-white/62">
                 {card.shortMeaning}
               </p>
@@ -2962,15 +2970,15 @@ function TarotCardArt({ card }: { card: DrawnTarotCard }) {
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={card.imagePath}
-          alt={card.name}
+          alt=""
           onError={() => setImageFailed(true)}
-          className="absolute inset-0 h-full w-full object-cover"
+          className={`absolute inset-0 h-full w-full object-cover ${
+            card.orientation === "reversed" ? "rotate-180" : ""
+          }`}
         />
       ) : (
         <div
-          className={`flex h-full w-full flex-col items-center justify-between p-3 text-center ${
-            card.orientation === "reversed" ? "rotate-180" : ""
-          }`}
+          className="flex h-full w-full flex-col items-center justify-between p-3 text-center"
           style={{
             background:
               "radial-gradient(circle at 50% 18%, rgba(56,189,248,0.24), transparent 34%), linear-gradient(160deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
