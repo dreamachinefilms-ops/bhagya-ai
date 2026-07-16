@@ -3324,6 +3324,35 @@ function ReadingSlots({
   );
 }
 
+type TarotArcTransform = {
+  translateY: number;
+  rotate: number;
+  scale: number;
+  zIndex: number;
+};
+
+function getTarotArcTransform(
+  cardCenterX: number,
+  viewportCenterX: number,
+  viewportWidth: number,
+): TarotArcTransform {
+  const horizontalDistance = cardCenterX - viewportCenterX;
+  const normalized = Math.max(
+    -1,
+    Math.min(1, horizontalDistance / (viewportWidth * 0.55)),
+  );
+  const distanceFromCenter = Math.abs(normalized);
+  const arcDepth = viewportWidth < 480 ? 30 : viewportWidth < 768 ? 42 : 58;
+  const maxRotation = viewportWidth < 480 ? 26 : viewportWidth < 768 ? 30 : 34;
+
+  return {
+    translateY: Math.pow(distanceFromCenter, 1.7) * arcDepth,
+    rotate: normalized * maxRotation,
+    scale: 1 - distanceFromCenter * 0.06,
+    zIndex: 100 - Math.round(distanceFromCenter * 50),
+  };
+}
+
 function TarotDeck({
   activeSession,
   selectedIndexes,
@@ -3336,6 +3365,7 @@ function TarotDeck({
   onToggleCard: (index: number) => void;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef({
     pointerId: null as number | null,
     startX: 0,
@@ -3361,27 +3391,26 @@ function TarotDeck({
 
   function updateCardArcTransforms() {
     const viewport = viewportRef.current;
-    if (!viewport) return;
+    const track = trackRef.current;
+    if (!viewport || !track) return;
 
     const viewportRect = viewport.getBoundingClientRect();
-    const viewportCenterX = viewportRect.left + viewportRect.width / 2;
-    const maxRotation = viewportRect.width < 480 ? 26 : viewportRect.width < 768 ? 30 : 34;
-    const arcHeight = Math.min(60, Math.max(34, viewportRect.width * 0.1));
-    const arcRadius = viewportRect.width * 0.54;
+    const trackRect = track.getBoundingClientRect();
+    const viewportCenterX = viewportRect.left + viewportRect.width / 2 - trackRect.left;
 
     cardRefs.current.forEach((card, cardIndex) => {
-      const cardRect = card.getBoundingClientRect();
-      const cardCenterX = cardRect.left + cardRect.width / 2;
-      const distance = cardCenterX - viewportCenterX;
-      const normalized = Math.max(-1, Math.min(1, distance / arcRadius));
-      const distanceRatio = Math.abs(normalized);
+      const cardCenterX = card.offsetLeft + card.offsetWidth / 2;
+      const arcTransform = getTarotArcTransform(
+        cardCenterX,
+        viewportCenterX,
+        viewportRect.width,
+      );
       const selected = selectedIndexesRef.current.includes(cardIndex);
-      const rotate = normalized * maxRotation;
-      const translateY = -(Math.pow(distanceRatio, 1.7) * arcHeight) + (selected ? -14 : 0);
-      const scale = 1 - distanceRatio * 0.06 + (selected ? 0.025 : 0);
-      const zIndex = 100 - Math.round(distanceRatio * 50) + (selected ? 20 : 0);
+      const translateY = arcTransform.translateY + (selected ? -14 : 0);
+      const scale = arcTransform.scale + (selected ? 0.025 : 0);
+      const zIndex = arcTransform.zIndex + (selected ? 20 : 0);
 
-      card.style.transform = `translateY(${translateY}px) rotate(${rotate}deg) scale(${scale})`;
+      card.style.transform = `translate3d(0, ${translateY}px, 0) rotate(${arcTransform.rotate}deg) scale(${scale})`;
       card.style.zIndex = String(zIndex);
     });
   }
@@ -3522,7 +3551,7 @@ function TarotDeck({
       ref={viewportRef}
       role="region"
       aria-label="Swipe or scroll to choose Tarot cards"
-      className="-mx-4 max-w-[calc(100%+2rem)] cursor-grab overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-10 pb-8 pt-20 active:cursor-grabbing [scrollbar-color:rgba(226,232,240,0.28)_transparent] [scrollbar-width:thin] [touch-action:pan-x] [-webkit-overflow-scrolling:touch] sm:mx-0 sm:max-w-full sm:px-16 sm:pt-24"
+      className="-mx-4 max-w-[calc(100%+2rem)] cursor-grab overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-10 pb-20 pt-5 active:cursor-grabbing [scrollbar-color:rgba(226,232,240,0.28)_transparent] [scrollbar-width:thin] [touch-action:pan-x] [-webkit-overflow-scrolling:touch] sm:mx-0 sm:max-w-full sm:px-16 sm:pb-24 sm:pt-6"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endPointerDrag}
@@ -3530,7 +3559,10 @@ function TarotDeck({
       onScroll={scheduleArcUpdate}
       onWheel={handleWheel}
     >
-      <div className="flex min-w-max items-end justify-start px-[calc(50%_-_29px)] pb-2 sm:px-[calc(50%_-_38px)] md:px-[calc(50%_-_42px)]">
+      <div
+        ref={trackRef}
+        className="relative flex min-w-max items-start justify-start px-[calc(50%_-_29px)] pb-2 sm:px-[calc(50%_-_38px)] md:px-[calc(50%_-_42px)]"
+      >
         {activeSession.availablePositions.map((cardIndex, visualIndex) => {
           const selected = selectedIndexes.includes(cardIndex);
 
@@ -3549,7 +3581,7 @@ function TarotDeck({
               aria-label={`Select Tarot card ${visualIndex + 1} of ${activeSession.availablePositions.length}`}
               onClick={() => handleCardClick(cardIndex)}
               disabled={isLoading}
-              className={`group relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 rounded-[17px] border p-[1px] transition-[background-color,border-color,box-shadow,opacity] duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
+              className={`group relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 origin-top rounded-[17px] border p-[1px] transition-[background-color,border-color,box-shadow,opacity] duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
                 selected
                   ? "z-20 border-white/95 bg-sky-300/15 opacity-90 shadow-[0_18px_48px_rgba(255,255,255,0.16),0_16px_44px_rgba(34,199,242,0.2)] ring-1 ring-white/75"
                   : "z-10 border-white/[0.09] bg-white/[0.035] hover:z-30 hover:border-sky-100/45 hover:shadow-[0_18px_46px_rgba(34,199,242,0.16)]"
