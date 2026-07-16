@@ -73,6 +73,20 @@ create table if not exists public.messages (
   created_at timestamptz default now()
 );
 
+create table if not exists public.numerology_profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references auth.users(id) on delete cascade,
+  source_full_name text not null,
+  source_date_of_birth text not null,
+  calculation_system text not null,
+  calculation_version text not null,
+  core_numbers jsonb not null,
+  name_breakdown jsonb not null,
+  calculated_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 update public.chats set title = 'Reading' where title is null;
 
 alter table public.chats
@@ -99,6 +113,7 @@ alter table public.profiles enable row level security;
 alter table public.user_birth_details enable row level security;
 alter table public.chats enable row level security;
 alter table public.messages enable row level security;
+alter table public.numerology_profiles enable row level security;
 
 drop policy if exists "Users can select own profile" on public.profiles;
 create policy "Users can select own profile"
@@ -140,6 +155,27 @@ with check (auth.uid() = user_id);
 drop policy if exists "Users can delete own birth details" on public.user_birth_details;
 create policy "Users can delete own birth details"
 on public.user_birth_details for delete
+using (auth.uid() = user_id);
+
+drop policy if exists "Users can select own numerology profile" on public.numerology_profiles;
+create policy "Users can select own numerology profile"
+on public.numerology_profiles for select
+using (auth.uid() = user_id);
+
+drop policy if exists "Users can insert own numerology profile" on public.numerology_profiles;
+create policy "Users can insert own numerology profile"
+on public.numerology_profiles for insert
+with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update own numerology profile" on public.numerology_profiles;
+create policy "Users can update own numerology profile"
+on public.numerology_profiles for update
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete own numerology profile" on public.numerology_profiles;
+create policy "Users can delete own numerology profile"
+on public.numerology_profiles for delete
 using (auth.uid() = user_id);
 
 drop policy if exists "Users can select own chats" on public.chats;
@@ -200,6 +236,9 @@ on public.messages (chat_id, created_at asc);
 create index if not exists user_birth_details_user_id_idx
 on public.user_birth_details (user_id);
 
+create index if not exists numerology_profiles_user_id_idx
+on public.numerology_profiles (user_id);
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -225,5 +264,11 @@ execute function public.set_updated_at();
 drop trigger if exists set_user_birth_details_updated_at on public.user_birth_details;
 create trigger set_user_birth_details_updated_at
 before update on public.user_birth_details
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists set_numerology_profiles_updated_at on public.numerology_profiles;
+create trigger set_numerology_profiles_updated_at
+before update on public.numerology_profiles
 for each row
 execute function public.set_updated_at();

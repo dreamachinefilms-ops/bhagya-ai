@@ -17,6 +17,7 @@ import {
 import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
 import LanguageSelector from "@/components/LanguageSelector";
 import PalmScanAnimation from "@/components/PalmScanAnimation";
+import NumerologyBlueprint from "@/components/NumerologyBlueprint";
 import { preparePalmImage } from "@/lib/images/preparePalmImage";
 import {
   DEFAULT_LANGUAGE_CODE,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/languages";
 import { supabase } from "@/lib/supabaseClient";
 import type { PalmVisualMap } from "@/lib/palmistry/visualMap";
+import { parseNumerologyBlueprint } from "@/lib/numerology/messages";
 import type {
   DrawnTarotCard,
   TarotReadingSummary,
@@ -291,6 +293,20 @@ function chatHasTarotReading(chat: Chat | undefined) {
   );
 }
 
+function chatHasNumerologyBlueprint(chat: Chat | undefined) {
+  return Boolean(
+    chat?.messages.some(
+      (message) =>
+        message.service === "numerology" &&
+        Boolean(parseNumerologyBlueprint(message.content))
+    )
+  );
+}
+
+function getBrowserTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
 async function parseJsonResponse(response: Response) {
   const rawResponse = await response.text();
 
@@ -456,6 +472,8 @@ export default function Home() {
     []
   );
   const [tarotError, setTarotError] = useState("");
+  const [isNumerologyInitializing, setIsNumerologyInitializing] = useState(false);
+  const [numerologyError, setNumerologyError] = useState("");
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -476,10 +494,13 @@ export default function Home() {
   const palmVisualMapCacheRef = useRef<Record<string, PalmVisualMap>>({});
   const palmVisualMapRequestRef = useRef(0);
   const palmScanObjectUrlRef = useRef<string | null>(null);
+  const numerologyInitializationRef = useRef<Set<string>>(new Set());
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const activeChatHasPalmImage = chatHasPalmImage(activeChat);
   const activeChatHasTarotReading = chatHasTarotReading(activeChat);
+  const activeChatHasNumerologyBlueprint =
+    chatHasNumerologyBlueprint(activeChat);
   const isTarotFlowActive =
     selectedService === "tarot" &&
     (!activeChatHasTarotReading || tarotStatus !== "idle");
@@ -625,6 +646,7 @@ export default function Home() {
     if (isCheckingAuth) return;
 
     if (!isLoggedIn) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset auth-dependent profile state when the session ends
       setIsCheckingBirthProfile(false);
       setHasCompleteBirthProfile(false);
       return;
@@ -753,6 +775,8 @@ export default function Home() {
     setIsPalmScanReady(false);
     setPalmVisualMap(null);
     resetTarotFlow();
+    setNumerologyError("");
+    setIsNumerologyInitializing(false);
     setSelectedService("astrology");
     setIsLoading(false);
     setIsPalmAnalyzing(false);
@@ -771,6 +795,8 @@ export default function Home() {
     setIsPalmScanReady(false);
     setPalmVisualMap(null);
     resetTarotFlow();
+    setNumerologyError("");
+    setIsNumerologyInitializing(false);
     setIsLoading(false);
     setIsPalmAnalyzing(false);
     setIsSidebarOpen(false);
@@ -814,6 +840,9 @@ export default function Home() {
     setSelectedService(service);
     if (service !== "tarot") {
       resetTarotFlow();
+    }
+    if (service === "numerology" && isLoggedIn && hasCompleteBirthProfile) {
+      void openNumerologyExperience();
     }
   }
 
@@ -915,6 +944,118 @@ export default function Home() {
       !Array.isArray(data.message)
       ? mapDbMessage(data.message as Record<string, unknown>, service)
       : null;
+  }
+
+  async function initializeNumerologyChat(chatId: string) {
+    if (numerologyInitializationRef.current.has(chatId)) return;
+
+    numerologyInitializationRef.current.add(chatId);
+    setIsNumerologyInitializing(true);
+    setNumerologyError("");
+
+    try {
+      const headers = await getAuthHeaders();
+      if (!headers) throw new Error("Please sign in again to view your Number Blueprint.");
+
+      const res = await fetch("/api/numerology", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          action: "calculate-profile",
+          chatId,
+          timezone: getBrowserTimezone(),
+          languageCode: selectedLanguage,
+        }),
+      });
+      const data = await parseJsonResponse(res);
+
+      if (res.status === 401) {
+        router.push("/login?next=/");
+        return;
+      }
+
+      if (!res.ok || !isRecord(data.message)) {
+        throw new Error(
+          typeof data.answer === "string"
+            ? data.answer
+            : "Your Number Blueprint could not be prepared. Please try again."
+        );
+      }
+
+      const blueprintMessage = mapDbMessage(data.message, "numerology");
+      const profileUpdatedMessage = isRecord(data.profileUpdatedMessage)
+        ? mapDbMessage(data.profileUpdatedMessage, "numerology")
+        : null;
+      setChats((prev) =>
+        prev.map((chat) => {
+          if (chat.id !== chatId) return chat;
+
+          const existingIndex = chat.messages.findIndex((message) =>
+            Boolean(parseNumerologyBlueprint(message.content))
+          );
+          const messages = [...chat.messages];
+
+          if (existingIndex >= 0) {
+            messages[existingIndex] = blueprintMessage;
+          } else {
+            messages.push(blueprintMessage);
+          }
+
+          if (
+            profileUpdatedMessage &&
+            !messages.some((message) => message.id === profileUpdatedMessage.id)
+          ) {
+            messages.push(profileUpdatedMessage);
+          }
+
+          return { ...chat, service: "numerology", messages };
+        })
+      );
+    } catch (error) {
+      setNumerologyError(
+        error instanceof Error
+          ? error.message
+          : "Your Number Blueprint could not be prepared. Please try again."
+      );
+    } finally {
+      numerologyInitializationRef.current.delete(chatId);
+      setIsNumerologyInitializing(false);
+    }
+  }
+
+  async function openNumerologyExperience() {
+    if (isCheckingAuth || isCheckingBirthProfile || isNumerologyInitializing) return;
+
+    if (!isLoggedIn) return;
+    if (!hasCompleteBirthProfile) {
+      router.replace("/birth-details");
+      return;
+    }
+
+    const current = chats.find(
+      (chat) => chat.id === activeChatId && chat.service === "numerology"
+    );
+    const existing = current || chats.find((chat) => chat.service === "numerology");
+
+    if (existing) {
+      await selectChat(existing);
+      return;
+    }
+
+    const newChat = await createServerChat({
+      title: "My Number Blueprint",
+      service: "numerology",
+      languageCode: selectedLanguage,
+    });
+
+    if (!newChat) {
+      setNumerologyError("Your Numerology chat could not be created. Please try again.");
+      return;
+    }
+
+    setActiveChatId(newChat.id);
+    setChats((prev) => [newChat, ...prev]);
+    await initializeNumerologyChat(newChat.id);
   }
 
   async function handleTarotStart() {
@@ -1357,7 +1498,12 @@ export default function Home() {
       return;
     }
 
-    if (isCheckingAuth || isCheckingBirthProfile || isLoading) return;
+    if (
+      isCheckingAuth ||
+      isCheckingBirthProfile ||
+      isLoading ||
+      isNumerologyInitializing
+    ) return;
 
     if (!isLoggedIn) {
       localStorage.setItem(PENDING_QUESTION_KEY, cleanQuestion);
@@ -1419,6 +1565,10 @@ export default function Home() {
       workingChat = newChat;
       setActiveChatId(chatId);
       setChats((prev) => [newChat, ...prev]);
+
+      if (selectedService === "numerology") {
+        await initializeNumerologyChat(chatId);
+      }
     }
 
     if (!chatId) {
@@ -1500,6 +1650,7 @@ export default function Home() {
     ];
 
     try {
+      // eslint-disable-next-line react-hooks/purity -- event-handler timing is intentionally measured around the request
       const requestStartedAt = Date.now();
 
       const res = await fetch(selectedApi || "/api/astrology", {
@@ -1509,12 +1660,15 @@ export default function Home() {
           "X-Bhagya-Skip-Persistence": "true",
         },
         body: JSON.stringify({
+          action: selectedService === "numerology" ? "chat" : undefined,
           chatId,
           service: selectedService,
           question: cleanQuestion,
           messages: conversationHistory,
           language: selectedLanguageLabel,
           languageCode: selectedLanguage,
+          timezone:
+            selectedService === "numerology" ? getBrowserTimezone() : undefined,
         }),
       });
 
@@ -1544,6 +1698,7 @@ export default function Home() {
       }
 
       const finalAnswer = data.answer || t.silentError;
+      // eslint-disable-next-line react-hooks/purity -- event-handler timing is intentionally measured around the request
       const elapsed = Date.now() - requestStartedAt;
       const targetDelay = getRealisticReplyDelay(finalAnswer);
       const remainingDelay = Math.max(0, targetDelay - elapsed);
@@ -1908,6 +2063,7 @@ export default function Home() {
     setIsPalmScanReady(false);
     setPalmVisualMap(null);
     resetTarotFlow();
+    setNumerologyError("");
     setIsSidebarOpen(false);
 
     const headers = await getAuthHeaders();
@@ -1939,6 +2095,10 @@ export default function Home() {
           item.id === chat.id ? { ...item, messages: loadedMessages } : item
         )
       );
+
+      if (chat.service === "numerology") {
+        await initializeNumerologyChat(chat.id);
+      }
     } catch {
       console.error("Could not load messages");
     }
@@ -2613,6 +2773,20 @@ export default function Home() {
                 ) : null}
 
                 {!isTarotFlowActive &&
+                  selectedService === "numerology" &&
+                  !activeChatHasNumerologyBlueprint &&
+                  (isNumerologyInitializing || numerologyError) && (
+                    <NumerologyStatusCard
+                      isLoading={isNumerologyInitializing}
+                      error={numerologyError}
+                      onRetry={() => {
+                        if (activeChatId) void initializeNumerologyChat(activeChatId);
+                      }}
+                      onOpenBirthProfile={() => router.push("/birth-details")}
+                    />
+                  )}
+
+                {!isTarotFlowActive &&
                   activeChat?.messages.map((message, idx) => (
                   <div
                     key={message.id}
@@ -2648,7 +2822,8 @@ export default function Home() {
                       className={`${
                         message.role === "user"
                           ? "max-w-[88%] sm:max-w-[65%]"
-                          : parseTarotReadingContent(message.content)
+                          : parseTarotReadingContent(message.content) ||
+                              parseNumerologyBlueprint(message.content)
                             ? "w-full max-w-full"
                             : "max-w-[92%] sm:max-w-[72%]"
                       }`}
@@ -2661,13 +2836,17 @@ export default function Home() {
 
                       <div
                         className={`rounded-2xl ${
-                          parseMessageContent(message.content).imageUrl
+                          parseNumerologyBlueprint(message.content)
+                            ? "p-0"
+                            : parseMessageContent(message.content).imageUrl
                             ? "p-2"
                             : "px-4 py-3"
                         } text-[15px] leading-6 sm:text-[15px] ${
                           message.role === "user"
                             ? "text-white"
-                            : "border border-white/[0.08] text-white/82"
+                            : parseNumerologyBlueprint(message.content)
+                              ? "text-white/82"
+                              : "border border-white/[0.08] text-white/82"
                         }`}
                         style={
                           message.role === "user"
@@ -2677,7 +2856,9 @@ export default function Home() {
                                 boxShadow:
                                   "0 4px 24px rgba(56,189,248,0.18)",
                               }
-                            : {
+                            : parseNumerologyBlueprint(message.content)
+                              ? { background: "transparent" }
+                              : {
                                 background: "rgba(255,255,255,0.04)",
                                 backdropFilter: "blur(12px)",
                               }
@@ -2691,7 +2872,13 @@ export default function Home() {
                             </span>
                           </div>
                         ) : (
-                          <MessageContent message={message} />
+                          <MessageContent
+                            message={message}
+                            onNumerologyPromptSelect={(prompt) => {
+                              setQuestion(prompt);
+                              window.requestAnimationFrame(() => inputRef.current?.focus());
+                            }}
+                          />
                         )}
                       </div>
                     </div>
@@ -2757,7 +2944,9 @@ export default function Home() {
                     question={question}
                     setQuestion={setQuestion}
                     handleAsk={handleAsk}
-                    isLoading={isLoading || isCheckingAuth}
+                    isLoading={
+                      isLoading || isCheckingAuth || isNumerologyInitializing
+                    }
                     inputRef={inputRef}
                     placeholder={t.followupPlaceholder}
                     askLabel={t.ask}
@@ -2874,11 +3063,28 @@ export default function Home() {
 }
 
 /* ── Rail icon wrapper ── */
-function MessageContent({ message }: { message: Message }) {
+function MessageContent({
+  message,
+  onNumerologyPromptSelect,
+}: {
+  message: Message;
+  onNumerologyPromptSelect: (prompt: string) => void;
+}) {
   const tarotReading = parseTarotReadingContent(message.content);
 
   if (tarotReading) {
     return <TarotReadingMessage reading={tarotReading} />;
+  }
+
+  const numerologyProfile = parseNumerologyBlueprint(message.content);
+
+  if (numerologyProfile) {
+    return (
+      <NumerologyBlueprint
+        profile={numerologyProfile}
+        onPromptSelect={onNumerologyPromptSelect}
+      />
+    );
   }
 
   const parsed = parseMessageContent(message.content);
@@ -2904,6 +3110,56 @@ function MessageContent({ message }: { message: Message }) {
   }
 
   return <p className="whitespace-pre-wrap">{message.content}</p>;
+}
+
+function NumerologyStatusCard({
+  isLoading,
+  error,
+  onRetry,
+  onOpenBirthProfile,
+}: {
+  isLoading: boolean;
+  error: string;
+  onRetry: () => void;
+  onOpenBirthProfile: () => void;
+}) {
+  const needsBirthProfile = /birth profile|full name|date of birth/i.test(error);
+
+  return (
+    <div className="flex justify-start gap-3">
+      <div className="mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-cyan-200/20 bg-cyan-300/10 text-xs text-cyan-100">
+        #
+      </div>
+      <div className="max-w-[92%] rounded-2xl border border-cyan-100/12 bg-white/[0.04] px-4 py-3 text-sm leading-6 text-white/70 backdrop-blur-xl sm:max-w-[72%]">
+        {isLoading ? (
+          <div className="flex items-center gap-2">
+            <LoadingDots />
+            <span>Calculating your Number Blueprint...</span>
+          </div>
+        ) : (
+          <>
+            <p>{error}</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-3 min-h-9 rounded-full border border-cyan-100/20 bg-cyan-200/[0.07] px-3 text-[12px] font-semibold text-cyan-50/80 transition hover:bg-cyan-200/[0.12]"
+            >
+              Try again
+            </button>
+            {needsBirthProfile && (
+              <button
+                type="button"
+                onClick={onOpenBirthProfile}
+                className="ml-2 mt-3 min-h-9 rounded-full border border-white/12 px-3 text-[12px] font-semibold text-white/66 transition hover:border-cyan-100/25 hover:text-cyan-50"
+              >
+                Complete Birth Profile
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function TarotReadingMessage({
