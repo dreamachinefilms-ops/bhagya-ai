@@ -2648,7 +2648,9 @@ export default function Home() {
                       className={`${
                         message.role === "user"
                           ? "max-w-[88%] sm:max-w-[65%]"
-                          : "max-w-[92%] sm:max-w-[72%]"
+                          : parseTarotReadingContent(message.content)
+                            ? "w-full max-w-full"
+                            : "max-w-[92%] sm:max-w-[72%]"
                       }`}
                     >
                       {message.role === "assistant" && (
@@ -2920,13 +2922,13 @@ function TarotReadingMessage({
         </h3>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid items-stretch gap-3 sm:grid-cols-3">
         {reading.cards.map((card) => (
           <div
             key={`${card.position}-${card.cardId}`}
             role="group"
             aria-label={`${card.name}, ${card.orientation}`}
-            className="rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3"
+            className="flex h-full flex-col rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3"
           >
             <TarotCardArt card={card} />
             <div className="mt-3">
@@ -2965,7 +2967,7 @@ function TarotCardArt({ card }: { card: DrawnTarotCard }) {
   const keywords = card.keywords.slice(0, 3).join(" / ");
 
   return (
-    <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-sky-300/15 bg-[#08111f] shadow-[0_18px_55px_rgba(14,165,233,0.16)]">
+    <div className="relative min-h-[220px] aspect-[2/3] overflow-hidden rounded-xl border border-sky-300/15 bg-[#08111f] shadow-[0_18px_55px_rgba(14,165,233,0.16)]">
       {!imageFailed && card.imagePath ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -2978,25 +2980,25 @@ function TarotCardArt({ card }: { card: DrawnTarotCard }) {
         />
       ) : (
         <div
-          className="flex h-full w-full flex-col items-center justify-between p-3 text-center"
+          className="flex h-full w-full flex-col items-center p-3 text-center"
           style={{
             background:
               "radial-gradient(circle at 50% 18%, rgba(56,189,248,0.24), transparent 34%), linear-gradient(160deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
           }}
         >
-          <span className="h-1.5 w-12 rounded-full bg-sky-300/50" />
-          <div>
+          <span className="h-1.5 w-12 flex-shrink-0 rounded-full bg-sky-300/50" />
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-2">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-100/55">
               Tarot
             </p>
-            <p className="mt-3 text-lg font-semibold leading-5 text-white">
+            <p className="mt-2 text-lg font-semibold leading-5 text-white">
               {card.name}
             </p>
-            <p className="mt-3 text-[10px] uppercase tracking-[0.16em] text-white/35">
+            <p className="mt-2 break-words text-[10px] uppercase leading-4 tracking-[0.16em] text-white/35">
               {keywords}
             </p>
           </div>
-          <span className="h-1.5 w-12 rounded-full bg-sky-300/50" />
+          <span className="h-1.5 w-12 flex-shrink-0 rounded-full bg-sky-300/50" />
         </div>
       )}
     </div>
