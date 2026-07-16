@@ -10,6 +10,7 @@ import {
   useRef,
   type ReactNode,
   type RefObject,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
@@ -3046,7 +3047,7 @@ function TarotCardBack({
 }) {
   return (
     <span
-      className={`relative block h-full w-full overflow-hidden rounded-[14px] transition duration-300 motion-reduce:transform-none ${
+      className={`pointer-events-none relative block h-full w-full overflow-hidden rounded-[14px] transition duration-300 motion-reduce:transform-none ${
         selected
           ? "-translate-y-1 scale-[1.035]"
           : "group-hover:-translate-y-1 group-hover:scale-[1.018]"
@@ -3332,6 +3333,8 @@ type TarotArcTransform = {
   zIndex: number;
 };
 
+const TAROT_DRAG_THRESHOLD_PX = 8;
+
 function getTarotArcTransform(
   cardCenterX: number,
   viewportCenterX: number,
@@ -3370,6 +3373,7 @@ function TarotDeck({
   const dragStateRef = useRef({
     pointerId: null as number | null,
     startX: 0,
+    startY: 0,
     startScrollLeft: 0,
     hasDragged: false,
   });
@@ -3486,7 +3490,7 @@ function TarotDeck({
     suppressClickTimerRef.current = window.setTimeout(() => {
       suppressClickRef.current = false;
       suppressClickTimerRef.current = null;
-    }, 120);
+    }, 80);
   }
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -3499,13 +3503,10 @@ function TarotDeck({
     dragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
+      startY: event.clientY,
       startScrollLeft: viewport.scrollLeft,
       hasDragged: false,
     };
-
-    viewport.setPointerCapture(event.pointerId);
-    viewport.style.cursor = "grabbing";
-    document.body.style.userSelect = "none";
   }
 
   function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
@@ -3515,9 +3516,17 @@ function TarotDeck({
     if (!viewport || dragState.pointerId !== event.pointerId) return;
 
     const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
 
-    if (Math.abs(deltaX) > 8) {
+    if (
+      !dragState.hasDragged &&
+      Math.abs(deltaX) > TAROT_DRAG_THRESHOLD_PX &&
+      Math.abs(deltaX) > Math.abs(deltaY)
+    ) {
       dragState.hasDragged = true;
+      viewport.setPointerCapture(event.pointerId);
+      viewport.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
     }
 
     if (!dragState.hasDragged) return;
@@ -3527,30 +3536,57 @@ function TarotDeck({
     event.preventDefault();
   }
 
-  function endPointerDrag(event: ReactPointerEvent<HTMLDivElement>) {
+  function finishPointerDrag(
+    event: ReactPointerEvent<HTMLDivElement>,
+    releasePointerCapture = true,
+  ) {
     const viewport = viewportRef.current;
     const dragState = dragStateRef.current;
 
-    if (viewport && dragState.pointerId === event.pointerId) {
-      if (viewport.hasPointerCapture(event.pointerId)) {
-        viewport.releasePointerCapture(event.pointerId);
-      }
+    if (dragState.pointerId !== event.pointerId) return;
 
-      viewport.style.cursor = "";
-    }
-
-    if (dragState.pointerId === event.pointerId && dragState.hasDragged) {
-      suppressClickRef.current = true;
-      clearClickSuppressionSoon();
-    }
+    const hasDragged = dragState.hasDragged;
+    const hasPointerCapture = Boolean(
+      viewport?.hasPointerCapture(event.pointerId),
+    );
 
     dragStateRef.current = {
       pointerId: null,
       startX: 0,
+      startY: 0,
       startScrollLeft: 0,
       hasDragged: false,
     };
+
+    if (viewport) {
+      viewport.style.cursor = "";
+    }
+
     document.body.style.userSelect = "";
+
+    if (viewport && releasePointerCapture && hasPointerCapture) {
+      viewport.releasePointerCapture(event.pointerId);
+    }
+
+    if (hasDragged) {
+      suppressClickRef.current = true;
+      clearClickSuppressionSoon();
+    }
+  }
+
+  function endPointerDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    finishPointerDrag(event);
+  }
+
+  function handlePointerLeave(event: ReactPointerEvent<HTMLDivElement>) {
+    const viewport = viewportRef.current;
+    if (viewport?.hasPointerCapture(event.pointerId)) return;
+
+    finishPointerDrag(event, false);
+  }
+
+  function handleLostPointerCapture(event: ReactPointerEvent<HTMLDivElement>) {
+    finishPointerDrag(event, false);
   }
 
   function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
@@ -3571,9 +3607,13 @@ function TarotDeck({
     scheduleArcUpdate();
   }
 
-  function handleCardClick(cardIndex: number) {
+  function handleCardClick(
+    cardIndex: number,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) {
     if (suppressClickRef.current) {
-      suppressClickRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
 
@@ -3585,11 +3625,13 @@ function TarotDeck({
       ref={viewportRef}
       role="region"
       aria-label="Swipe or scroll to choose Tarot cards"
-      className="-mx-4 max-w-[calc(100%+2rem)] cursor-grab overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-10 pb-20 pt-5 active:cursor-grabbing [scrollbar-color:rgba(226,232,240,0.28)_transparent] [scrollbar-width:thin] [touch-action:pan-x] [-webkit-overflow-scrolling:touch] sm:mx-0 sm:max-w-full sm:px-16 sm:pb-24 sm:pt-6"
+      className="-mx-4 max-w-[calc(100%+2rem)] cursor-grab select-none overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-auto px-10 pb-20 pt-5 [scrollbar-color:rgba(226,232,240,0.28)_transparent] [scrollbar-width:thin] [touch-action:pan-x] [-webkit-overflow-scrolling:touch] sm:mx-0 sm:max-w-full sm:px-16 sm:pb-24 sm:pt-6"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endPointerDrag}
       onPointerCancel={endPointerDrag}
+      onPointerLeave={handlePointerLeave}
+      onLostPointerCapture={handleLostPointerCapture}
       onScroll={scheduleArcUpdate}
       onWheel={handleWheel}
     >
@@ -3613,9 +3655,9 @@ function TarotDeck({
               type="button"
               aria-pressed={selected}
               aria-label={`Select Tarot card ${visualIndex + 1} of ${activeSession.availablePositions.length}`}
-              onClick={() => handleCardClick(cardIndex)}
+              onClick={(event) => handleCardClick(cardIndex, event)}
               disabled={isLoading}
-              className={`group relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 origin-top rounded-[17px] border p-[1px] transition-[background-color,border-color,box-shadow,opacity] duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
+              className={`group pointer-events-auto relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 origin-top rounded-[17px] border p-[1px] transition-[background-color,border-color,box-shadow,opacity] duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
                 selected
                   ? "z-20 border-white/95 bg-sky-300/15 opacity-90 shadow-[0_18px_48px_rgba(255,255,255,0.16),0_16px_44px_rgba(34,199,242,0.2)] ring-1 ring-white/75"
                   : "z-10 border-white/[0.09] bg-white/[0.035] hover:z-30 hover:border-sky-100/45 hover:shadow-[0_18px_46px_rgba(34,199,242,0.16)]"
