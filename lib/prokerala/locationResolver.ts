@@ -19,6 +19,7 @@ type CityLocation = {
 
 const indianCities: CityLocation[] = [
   { name: "Agartala", state: "Tripura", latitude: 23.8315, longitude: 91.2868, timezoneOffset: "+05:30" },
+  { name: "Agra", state: "Uttar Pradesh", latitude: 27.1767, longitude: 78.0081, timezoneOffset: "+05:30" },
   { name: "Delhi", state: "Delhi", latitude: 28.6139, longitude: 77.209, timezoneOffset: "+05:30" },
   { name: "Mumbai", state: "Maharashtra", latitude: 19.076, longitude: 72.8777, timezoneOffset: "+05:30" },
   { name: "Kolkata", state: "West Bengal", latitude: 22.5726, longitude: 88.3639, timezoneOffset: "+05:30" },
@@ -51,6 +52,7 @@ const aliases: Record<string, string> = {
   calcutta: "Kolkata",
   trivandrum: "Thiruvananthapuram",
   cochin: "Kochi",
+  "taj mahal": "Agra",
 };
 
 function normalizePlace(place: string) {
@@ -92,7 +94,12 @@ function toResolvedLocation(city: CityLocation): ResolvedLocation {
 
 export function resolveBirthPlace(place: string): ResolvedLocation | null {
   const candidates = withIndiaFallback(place);
-  const aliasTarget = candidates.map((candidate) => aliases[candidate]).find(Boolean);
+  const segments = candidates.flatMap((candidate) =>
+    candidate.split(",").map((segment) => segment.trim()).filter(Boolean)
+  );
+  const aliasTarget = segments
+    .map((segment) => aliases[segment])
+    .find(Boolean);
 
   if (aliasTarget) {
     const city = indianCities.find((item) => item.name === aliasTarget);
@@ -109,14 +116,23 @@ export function resolveBirthPlace(place: string): ResolvedLocation | null {
     return candidates.some((normalizedPlace) => {
       if (!normalizedPlace) return false;
 
-      const firstSegment = normalizedPlace.split(",")[0]?.trim();
+      const placeSegments = normalizedPlace
+        .split(",")
+        .map((segment) => segment.trim());
+      const firstSegment = placeSegments[0];
+      const containsCityName = placeSegments.some(
+        (segment) =>
+          segment === normalizedCity ||
+          new RegExp(`\\b${normalizedCity}\\b`).test(segment)
+      );
 
       return (
         normalizedPlace === normalizedCity ||
         normalizedPlace === searchableCity ||
         normalizedPlace.includes(searchableCity) ||
         searchableCity.includes(normalizedPlace) ||
-        Boolean(firstSegment && firstSegment === normalizedCity)
+        Boolean(firstSegment && firstSegment === normalizedCity) ||
+        containsCityName
       );
     });
   });
