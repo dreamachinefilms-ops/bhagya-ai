@@ -3344,20 +3344,73 @@ function TarotDeck({
   });
   const suppressClickRef = useRef(false);
   const suppressClickTimerRef = useRef<number | null>(null);
+  const cardRefs = useRef(new Map<number, HTMLButtonElement>());
+  const animationFrameRef = useRef<number | null>(null);
+  const selectedIndexesRef = useRef(selectedIndexes);
+
+  selectedIndexesRef.current = selectedIndexes;
+
+  function scheduleArcUpdate() {
+    if (animationFrameRef.current !== null) return;
+
+    animationFrameRef.current = window.requestAnimationFrame(() => {
+      animationFrameRef.current = null;
+      updateCardArcTransforms();
+    });
+  }
+
+  function updateCardArcTransforms() {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const viewportCenterX = viewportRect.left + viewportRect.width / 2;
+    const maxRotation = viewportRect.width < 480 ? 26 : viewportRect.width < 768 ? 30 : 34;
+    const arcHeight = Math.min(60, Math.max(34, viewportRect.width * 0.1));
+    const arcRadius = viewportRect.width * 0.54;
+
+    cardRefs.current.forEach((card, cardIndex) => {
+      const cardRect = card.getBoundingClientRect();
+      const cardCenterX = cardRect.left + cardRect.width / 2;
+      const distance = cardCenterX - viewportCenterX;
+      const normalized = Math.max(-1, Math.min(1, distance / arcRadius));
+      const distanceRatio = Math.abs(normalized);
+      const selected = selectedIndexesRef.current.includes(cardIndex);
+      const rotate = normalized * maxRotation;
+      const translateY = -(Math.pow(distanceRatio, 1.7) * arcHeight) + (selected ? -14 : 0);
+      const scale = 1 - distanceRatio * 0.06 + (selected ? 0.025 : 0);
+      const zIndex = 100 - Math.round(distanceRatio * 50) + (selected ? 20 : 0);
+
+      card.style.transform = `translateY(${translateY}px) rotate(${rotate}deg) scale(${scale})`;
+      card.style.zIndex = String(zIndex);
+    });
+  }
 
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
 
     viewport.scrollLeft = 0;
+    scheduleArcUpdate();
   }, [activeSession.id]);
 
   useEffect(() => {
+    scheduleArcUpdate();
+  });
+
+  useEffect(() => {
+    window.addEventListener("resize", scheduleArcUpdate);
+
     return () => {
       if (suppressClickTimerRef.current !== null) {
         window.clearTimeout(suppressClickTimerRef.current);
       }
 
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+      }
+
+      window.removeEventListener("resize", scheduleArcUpdate);
       document.body.style.userSelect = "";
     };
   }, []);
@@ -3407,6 +3460,7 @@ function TarotDeck({
     if (!dragState.hasDragged) return;
 
     viewport.scrollLeft = dragState.startScrollLeft - deltaX;
+    scheduleArcUpdate();
     event.preventDefault();
   }
 
@@ -3451,6 +3505,7 @@ function TarotDeck({
 
     event.preventDefault();
     viewport.scrollLeft += event.deltaY;
+    scheduleArcUpdate();
   }
 
   function handleCardClick(cardIndex: number) {
@@ -3467,42 +3522,38 @@ function TarotDeck({
       ref={viewportRef}
       role="region"
       aria-label="Swipe or scroll to choose Tarot cards"
-      className="-mx-4 max-w-[calc(100%+2rem)] cursor-grab overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-10 pb-8 pt-8 active:cursor-grabbing [scrollbar-color:rgba(226,232,240,0.28)_transparent] [scrollbar-width:thin] [touch-action:pan-x] [-webkit-overflow-scrolling:touch] sm:mx-0 sm:max-w-full sm:px-16"
+      className="-mx-4 max-w-[calc(100%+2rem)] cursor-grab overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-10 pb-8 pt-20 active:cursor-grabbing [scrollbar-color:rgba(226,232,240,0.28)_transparent] [scrollbar-width:thin] [touch-action:pan-x] [-webkit-overflow-scrolling:touch] sm:mx-0 sm:max-w-full sm:px-16 sm:pt-24"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endPointerDrag}
       onPointerCancel={endPointerDrag}
+      onScroll={scheduleArcUpdate}
       onWheel={handleWheel}
     >
-      <div className="flex min-w-max items-end justify-start pb-2">
+      <div className="flex min-w-max items-end justify-start px-[calc(50%_-_29px)] pb-2 sm:px-[calc(50%_-_38px)] md:px-[calc(50%_-_42px)]">
         {activeSession.availablePositions.map((cardIndex, visualIndex) => {
           const selected = selectedIndexes.includes(cardIndex);
-          const progress =
-            activeSession.availablePositions.length > 1
-              ? visualIndex / (activeSession.availablePositions.length - 1)
-              : 0.5;
-          const curve = Math.abs(progress - 0.5) * 2;
-          const angle = (progress - 0.5) * 16;
-          const lift = curve * 12;
 
           return (
             <button
               key={cardIndex}
+              ref={(node) => {
+                if (node) {
+                  cardRefs.current.set(cardIndex, node);
+                } else {
+                  cardRefs.current.delete(cardIndex);
+                }
+              }}
               type="button"
               aria-pressed={selected}
               aria-label={`Select Tarot card ${visualIndex + 1} of ${activeSession.availablePositions.length}`}
               onClick={() => handleCardClick(cardIndex)}
               disabled={isLoading}
-              className={`group relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 rounded-[17px] border p-[1px] transition duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
+              className={`group relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 rounded-[17px] border p-[1px] transition-[background-color,border-color,box-shadow,opacity] duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
                 selected
                   ? "z-20 border-white/95 bg-sky-300/15 opacity-90 shadow-[0_18px_48px_rgba(255,255,255,0.16),0_16px_44px_rgba(34,199,242,0.2)] ring-1 ring-white/75"
                   : "z-10 border-white/[0.09] bg-white/[0.035] hover:z-30 hover:border-sky-100/45 hover:shadow-[0_18px_46px_rgba(34,199,242,0.16)]"
               } disabled:cursor-not-allowed`}
-              style={{
-                transform: selected
-                  ? `translateY(-18px) rotate(${angle * 0.35}deg)`
-                  : `translateY(${lift}px) rotate(${angle}deg)`,
-              }}
             >
               <TarotCardBack
                 selected={selected}
