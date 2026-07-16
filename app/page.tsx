@@ -9,6 +9,8 @@ import {
   useRef,
   type ReactNode,
   type RefObject,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
 import LanguageSelector from "@/components/LanguageSelector";
@@ -3333,23 +3335,163 @@ function TarotDeck({
   isLoading: boolean;
   onToggleCard: (index: number) => void;
 }) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef({
+    pointerId: null as number | null,
+    startX: 0,
+    startScrollLeft: 0,
+    hasDragged: false,
+  });
+  const suppressClickRef = useRef(false);
+  const suppressClickTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    viewport.scrollLeft = 0;
+  }, [activeSession.id]);
+
+  useEffect(() => {
+    return () => {
+      if (suppressClickTimerRef.current !== null) {
+        window.clearTimeout(suppressClickTimerRef.current);
+      }
+
+      document.body.style.userSelect = "";
+    };
+  }, []);
+
+  function clearClickSuppressionSoon() {
+    if (suppressClickTimerRef.current !== null) {
+      window.clearTimeout(suppressClickTimerRef.current);
+    }
+
+    suppressClickTimerRef.current = window.setTimeout(() => {
+      suppressClickRef.current = false;
+      suppressClickTimerRef.current = null;
+    }, 120);
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "touch") return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: viewport.scrollLeft,
+      hasDragged: false,
+    };
+
+    viewport.setPointerCapture(event.pointerId);
+    viewport.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const viewport = viewportRef.current;
+    const dragState = dragStateRef.current;
+
+    if (!viewport || dragState.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - dragState.startX;
+
+    if (Math.abs(deltaX) > 8) {
+      dragState.hasDragged = true;
+    }
+
+    if (!dragState.hasDragged) return;
+
+    viewport.scrollLeft = dragState.startScrollLeft - deltaX;
+    event.preventDefault();
+  }
+
+  function endPointerDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const viewport = viewportRef.current;
+    const dragState = dragStateRef.current;
+
+    if (viewport && dragState.pointerId === event.pointerId) {
+      if (viewport.hasPointerCapture(event.pointerId)) {
+        viewport.releasePointerCapture(event.pointerId);
+      }
+
+      viewport.style.cursor = "";
+    }
+
+    if (dragState.pointerId === event.pointerId && dragState.hasDragged) {
+      suppressClickRef.current = true;
+      clearClickSuppressionSoon();
+    }
+
+    dragStateRef.current = {
+      pointerId: null,
+      startX: 0,
+      startScrollLeft: 0,
+      hasDragged: false,
+    };
+    document.body.style.userSelect = "";
+  }
+
+  function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    const viewport = event.currentTarget;
+    const maxScrollLeft = viewport.scrollWidth - viewport.clientWidth;
+
+    if (maxScrollLeft <= 0 || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+      return;
+    }
+
+    const canScrollForward = event.deltaY > 0 && viewport.scrollLeft < maxScrollLeft;
+    const canScrollBackward = event.deltaY < 0 && viewport.scrollLeft > 0;
+
+    if (!canScrollForward && !canScrollBackward) return;
+
+    event.preventDefault();
+    viewport.scrollLeft += event.deltaY;
+  }
+
+  function handleCardClick(cardIndex: number) {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+
+    onToggleCard(cardIndex);
+  }
+
   return (
-    <div className="-mx-4 overflow-x-auto px-4 pb-3 pt-2 sm:mx-0 sm:overflow-visible sm:px-0">
-      <div className="flex min-w-max items-end justify-center pb-2 sm:min-w-0">
+    <div
+      ref={viewportRef}
+      role="region"
+      aria-label="Swipe or scroll to choose Tarot cards"
+      className="-mx-4 max-w-[calc(100%+2rem)] cursor-grab overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-10 pb-8 pt-8 active:cursor-grabbing [scrollbar-color:rgba(226,232,240,0.28)_transparent] [scrollbar-width:thin] [touch-action:pan-x] [-webkit-overflow-scrolling:touch] sm:mx-0 sm:max-w-full sm:px-16"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endPointerDrag}
+      onPointerCancel={endPointerDrag}
+      onWheel={handleWheel}
+    >
+      <div className="flex min-w-max items-end justify-start pb-2">
         {activeSession.availablePositions.map((cardIndex, visualIndex) => {
           const selected = selectedIndexes.includes(cardIndex);
-          const center = (activeSession.availablePositions.length - 1) / 2;
-          const offset = visualIndex - center;
-          const angle = offset * 3.2;
-          const lift = Math.abs(offset) * 2;
+          const progress =
+            activeSession.availablePositions.length > 1
+              ? visualIndex / (activeSession.availablePositions.length - 1)
+              : 0.5;
+          const curve = Math.abs(progress - 0.5) * 2;
+          const angle = (progress - 0.5) * 16;
+          const lift = curve * 12;
 
           return (
             <button
               key={cardIndex}
               type="button"
               aria-pressed={selected}
-              aria-label={`Select tarot card ${visualIndex + 1}`}
-              onClick={() => onToggleCard(cardIndex)}
+              aria-label={`Select Tarot card ${visualIndex + 1} of ${activeSession.availablePositions.length}`}
+              onClick={() => handleCardClick(cardIndex)}
               disabled={isLoading}
               className={`group relative -ml-3 aspect-[2/3] w-[58px] flex-shrink-0 rounded-[17px] border p-[1px] transition duration-300 first:ml-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200/70 sm:-ml-5 sm:w-[76px] md:-ml-6 md:w-[84px] ${
                 selected

@@ -29,8 +29,8 @@ const routeName = "api/tarot";
 const reversalProbability = 0.25;
 const sessionTtlMs = 30 * 60 * 1000;
 const availableCardCounts: Record<TarotSpreadType, number> = {
-  "one-card": 10,
-  "three-card": 15,
+  "one-card": 78,
+  "three-card": 78,
 };
 
 function apiError(status: number, code: string, message: string) {
