@@ -513,6 +513,8 @@ export default function Home() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userInitials, setUserInitials] = useState("ME");
+  const [userAvatarUrl, setUserAvatarUrl] = useState("");
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isCheckingBirthProfile, setIsCheckingBirthProfile] = useState(false);
   const [hasCompleteBirthProfile, setHasCompleteBirthProfile] =
@@ -779,9 +781,25 @@ export default function Home() {
   }, [activeChatId, activeChat?.messages]);
 
   useEffect(() => {
+    function syncUserIdentity(user: { email?: string; user_metadata?: Record<string, unknown> } | null | undefined) {
+      const metadata = user?.user_metadata;
+      const displayName =
+        (typeof metadata?.full_name === "string" && metadata.full_name) ||
+        (typeof metadata?.name === "string" && metadata.name) ||
+        user?.email?.split("@")[0] || "Me";
+      const initials = displayName.trim().split(/\s+/).slice(0, 2)
+        .map((part) => part.charAt(0).toUpperCase()).join("");
+      const avatarUrl =
+        (typeof metadata?.avatar_url === "string" && metadata.avatar_url) ||
+        (typeof metadata?.picture === "string" && metadata.picture) || "";
+      setUserInitials(initials || "ME");
+      setUserAvatarUrl(avatarUrl);
+    }
+
     async function checkAuth() {
       const { data } = await supabase.auth.getUser();
       setIsLoggedIn(Boolean(data.user));
+      syncUserIdentity(data.user);
       setIsCheckingAuth(false);
     }
 
@@ -791,6 +809,7 @@ export default function Home() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsLoggedIn(Boolean(session?.user));
+      syncUserIdentity(session?.user);
       setIsCheckingAuth(false);
     });
 
@@ -2236,7 +2255,7 @@ export default function Home() {
 
         {/* Drawer panel */}
         <aside
-          className={`absolute left-0 top-0 flex h-full w-[88vw] max-w-[340px] flex-col border-r border-white/[0.08] backdrop-blur-3xl transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+          className={`bhagya-history-drawer absolute left-0 top-0 flex h-full w-[88vw] max-w-[340px] flex-col border-r border-white/[0.08] backdrop-blur-3xl transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
             isSidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
           style={{
@@ -2601,51 +2620,21 @@ export default function Home() {
       {hasStarted && !isPreparingBirthProfile && (
         <div className="relative z-10 flex h-[100dvh] min-h-0 overflow-hidden">
           {/* ── Left icon rail ── */}
-          <nav className="fixed left-0 top-0 z-30 hidden h-screen w-14 flex-col items-center border-r border-white/[0.07] bg-black/50 py-3 backdrop-blur-2xl sm:flex">
+          <nav className="bhagya-sidebar fixed left-0 top-0 z-30 hidden flex-col items-center bg-black sm:flex" aria-label="Primary navigation">
             {/* Logo mark */}
             <Link
               href="/"
-              className="mb-4 flex h-9 w-9 items-center justify-center rounded-2xl transition hover:scale-105"
-              style={{
-                background: "linear-gradient(135deg, #38bdf8, #1d4ed8)",
-              }}
+              className="bhagya-sidebar-logo group relative mb-5 flex h-9 w-9 items-center justify-center rounded-full text-sky-300"
+              aria-label="Bhagya.ai home"
             >
               <span className="text-sm">✨</span>
             </Link>
 
-            {/* Divider */}
-            <div className="mb-3 h-px w-8 bg-white/10" />
-
-            {/* Open drawer */}
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="bhagya-rail-btn group mb-2"
-              aria-label={t.recentReadings}
-              title={t.recentReadings}
-            >
-              <RailIcon>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                >
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <line x1="3" y1="12" x2="16" y2="12" />
-                  <line x1="3" y1="18" x2="19" y2="18" />
-                </svg>
-              </RailIcon>
-            </button>
-
             {/* New chat */}
             <button
               onClick={startNewChat}
-              className="bhagya-rail-btn group"
+              className="bhagya-rail-btn group relative mb-2"
               aria-label={t.newReading}
-              title={t.newReading}
             >
               <RailIcon>
                 <svg
@@ -2657,38 +2646,53 @@ export default function Home() {
                   strokeWidth="1.8"
                   strokeLinecap="round"
                 >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
                 </svg>
               </RailIcon>
+              <span className="bhagya-rail-tooltip">{t.newReading}</span>
+            </button>
+
+            {/* Open recent chats */}
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className={`bhagya-rail-btn group relative ${isSidebarOpen ? "bhagya-rail-btn-active" : ""}`}
+              aria-label={t.recentReadings}
+              aria-current={isSidebarOpen ? "page" : undefined}
+            >
+              <RailIcon>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                >
+                  <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
+                  <line x1="8" y1="9" x2="16" y2="9" />
+                  <line x1="8" y1="13" x2="13" y2="13" />
+                </svg>
+              </RailIcon>
+              <span className="bhagya-rail-tooltip">{t.recentReadings}</span>
             </button>
 
             {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Service glyphs */}
-            <div className="mb-3 space-y-1">
-              {services.map((svc) => (
-                <button
-                  key={svc.id}
-                  onClick={() => handleServiceChange(svc.id)}
-                  className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm transition ${
-                    selectedService === svc.id
-                      ? "bg-sky-500/20 text-sky-300 ring-1 ring-sky-500/40"
-                      : "text-white/30 hover:bg-white/[0.08] hover:text-white/60"
-                  }`}
-                  title={t.services[svc.id]}
-                >
-                  {svc.glyph}
-                </button>
-              ))}
-            </div>
+            {isLoggedIn && (
+              <Link href="/settings" className="bhagya-sidebar-avatar group relative" aria-label="Profile & Settings">
+                {userAvatarUrl ? <img src={userAvatarUrl} alt="" className="h-full w-full rounded-full object-cover" /> : userInitials}
+                <span className="bhagya-rail-tooltip">Profile & Settings</span>
+              </Link>
+            )}
           </nav>
 
           {/* ── Main chat area ── */}
-          <section className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden pl-0 sm:pl-14">
+          <section className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden pl-0 sm:pl-[var(--app-sidebar-width)]">
             {/* Chat header */}
-            <header className="fixed left-0 right-0 top-0 z-20 flex h-[calc(56px+env(safe-area-inset-top))] items-end justify-between border-b border-white/[0.07] bg-[#020817]/75 px-3 pb-2 pt-[env(safe-area-inset-top)] backdrop-blur-2xl sm:left-14 sm:h-14 sm:items-center sm:px-4 sm:py-0">
+            <header className="fixed left-0 right-0 top-0 z-20 flex h-[calc(56px+env(safe-area-inset-top))] items-end justify-between border-b border-white/[0.07] bg-[#020817]/75 px-3 pb-2 pt-[env(safe-area-inset-top)] backdrop-blur-2xl sm:left-[var(--app-sidebar-width)] sm:h-14 sm:items-center sm:px-4 sm:py-0">
               <div className="flex min-w-0 items-center gap-2 sm:gap-3">
                 <button
                   onClick={() => setIsSidebarOpen(true)}
@@ -2763,7 +2767,7 @@ export default function Home() {
 
                 {isLoggedIn ? (
                   <>
-                    <Link href="/settings" aria-label="Profile & Settings" title="Profile & Settings" className="flex h-9 w-9 items-center justify-center rounded-full border border-sky-400/20 bg-sky-500/10 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/20">ME</Link>
+                    <Link href="/settings" aria-label="Profile & Settings" title="Profile & Settings" className="flex h-9 w-9 items-center justify-center rounded-full border border-sky-400/20 bg-sky-500/10 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/20 sm:hidden">{userInitials}</Link>
                     <button onClick={logoutUser} className="bhagya-pill-btn hidden text-[12px] text-white/60 transition hover:text-sky-300 sm:inline-flex">{t.logout}</button>
                   </>
                 ) : (
@@ -2958,7 +2962,7 @@ export default function Home() {
 
             {/* ── Bottom composer ── */}
             <div
-              className="fixed bottom-0 left-0 right-0 z-20 border-t border-white/[0.07] backdrop-blur-2xl sm:left-14"
+              className="fixed bottom-0 left-0 right-0 z-20 border-t border-white/[0.07] backdrop-blur-2xl sm:left-[var(--app-sidebar-width)]"
               style={{
                 background: "rgba(2,8,23,0.94)",
                 paddingBottom: "env(safe-area-inset-bottom)",
@@ -3071,19 +3075,117 @@ export default function Home() {
           justify-content: center;
           height: 36px;
           width: 36px;
-          border-radius: 10px;
-          color: rgba(255,255,255,0.4);
-          transition: background 0.18s, color 0.18s, transform 0.15s;
+          border-radius: 50%;
+          color: rgba(255,255,255,0.52);
+          transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
         }
 
         .bhagya-rail-btn:hover {
-          background: rgba(56,189,248,0.16);
-          color: rgba(125,211,252,0.95);
-          transform: scale(1.05);
+          background: rgba(255,255,255,0.08);
+          color: rgba(255,255,255,0.95);
+          transform: scale(1.04);
         }
 
         .bhagya-rail-btn:active {
           transform: scale(0.96);
+        }
+
+        .bhagya-sidebar {
+          width: var(--app-sidebar-width);
+          height: 100svh;
+          padding: calc(env(safe-area-inset-top) + 10px) 7px calc(env(safe-area-inset-bottom) + 10px);
+        }
+
+        .bhagya-sidebar-logo {
+          background: rgba(56,189,248,0.08);
+          transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
+        }
+
+        .bhagya-sidebar-logo:hover,
+        .bhagya-sidebar-logo:focus-visible {
+          background: rgba(56,189,248,0.14);
+          color: white;
+          transform: scale(1.04);
+        }
+
+        .bhagya-rail-btn-active {
+          background: rgba(56,189,248,0.12);
+          color: rgb(125 211 252);
+        }
+
+        .bhagya-rail-btn-active::before {
+          position: absolute;
+          left: -8px;
+          height: 16px;
+          width: 2px;
+          border-radius: 2px;
+          background: rgb(56 189 248);
+          content: "";
+        }
+
+        .bhagya-sidebar-avatar {
+          display: flex;
+          height: 28px;
+          width: 28px;
+          align-items: center;
+          justify-content: center;
+          overflow: visible;
+          border: 1px solid rgba(125,211,252,0.35);
+          border-radius: 50%;
+          background: linear-gradient(135deg, #075985, #1d4ed8);
+          color: white;
+          font-size: 9px;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+        }
+
+        .bhagya-rail-tooltip {
+          pointer-events: none;
+          position: absolute;
+          left: calc(100% + 12px);
+          z-index: 60;
+          width: max-content;
+          max-width: 190px;
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 7px;
+          background: #111318;
+          padding: 5px 8px;
+          color: rgba(255,255,255,0.88);
+          font-size: 11px;
+          line-height: 1rem;
+          opacity: 0;
+          transform: translateX(-3px);
+          transition: opacity 140ms ease, transform 140ms ease;
+          visibility: hidden;
+          white-space: nowrap;
+        }
+
+        .group:hover > .bhagya-rail-tooltip,
+        .group:focus-visible > .bhagya-rail-tooltip {
+          opacity: 1;
+          transform: translateX(0);
+          visibility: visible;
+        }
+
+        .bhagya-rail-btn:focus-visible,
+        .bhagya-sidebar-logo:focus-visible,
+        .bhagya-sidebar-avatar:focus-visible {
+          outline: 2px solid rgb(56 189 248);
+          outline-offset: 2px;
+        }
+
+        @media (min-width: 640px) {
+          .bhagya-history-drawer { left: var(--app-sidebar-width); }
+        }
+
+        @media (hover: none) {
+          .bhagya-rail-tooltip { display: none; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .bhagya-rail-btn,
+          .bhagya-sidebar-logo,
+          .bhagya-rail-tooltip { transition: none; }
         }
 
         @media (max-width: 639px) {

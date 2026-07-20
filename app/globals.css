@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  --app-sidebar-width: 52px;
   --background: #ffffff;
   --foreground: #171717;
   --safe-area-top: env(safe-area-inset-top, 0px);
