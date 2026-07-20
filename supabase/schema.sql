@@ -13,6 +13,7 @@ create table if not exists public.profiles (
 create table if not exists public.user_birth_details (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
+  full_name text,
   date_of_birth text,
   birth_time text,
   birth_time_known boolean not null default true,
@@ -24,6 +25,9 @@ create table if not exists public.user_birth_details (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+alter table public.user_birth_details
+add column if not exists full_name text;
 
 with ranked_birth_details as (
   select
@@ -158,25 +162,19 @@ on public.profiles for delete
 using (auth.uid() = id);
 
 drop policy if exists "Users can select own birth details" on public.user_birth_details;
-create policy "Users can select own birth details"
+drop policy if exists "Users can read own birth details" on public.user_birth_details;
+create policy "Users can read own birth details"
 on public.user_birth_details for select
 using (auth.uid() = user_id);
 
 drop policy if exists "Users can insert own birth details" on public.user_birth_details;
-create policy "Users can insert own birth details"
+drop policy if exists "Users can create own birth details once" on public.user_birth_details;
+create policy "Users can create own birth details once"
 on public.user_birth_details for insert
 with check (auth.uid() = user_id);
 
 drop policy if exists "Users can update own birth details" on public.user_birth_details;
-create policy "Users can update own birth details"
-on public.user_birth_details for update
-using (auth.uid() = user_id)
-with check (auth.uid() = user_id);
-
 drop policy if exists "Users can delete own birth details" on public.user_birth_details;
-create policy "Users can delete own birth details"
-on public.user_birth_details for delete
-using (auth.uid() = user_id);
 
 drop policy if exists "Users can select own numerology profile" on public.numerology_profiles;
 create policy "Users can select own numerology profile"

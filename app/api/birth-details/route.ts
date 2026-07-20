@@ -4,7 +4,7 @@ import {
   getSavedUserProfile,
   isCompleteBirthProfile,
   toBirthDetailsResponse,
-  upsertBirthDetails,
+  createBirthDetails,
   upsertUserProfile,
 } from "@/lib/backend/birthDetailsMemory";
 import {
@@ -285,6 +285,21 @@ export async function POST(request: Request) {
 
     userId = auth.user.id;
 
+    const existingBirthDetails = await getSavedBirthDetails({
+      request,
+      userId: auth.user.id,
+    });
+
+    if (existingBirthDetails) {
+      return Response.json(
+        {
+          error: "BIRTH_DETAILS_LOCKED",
+          message: "Birth details cannot be changed after your profile has been created.",
+        },
+        { status: 403 }
+      );
+    }
+
     let body: unknown;
 
     try {
@@ -374,9 +389,10 @@ export async function POST(request: Request) {
     }
 
     try {
-      await upsertBirthDetails({
+      await createBirthDetails({
         request,
         userId: auth.user.id,
+        fullName: normalizedName.fullName,
         dateOfBirth,
         birthTime,
         birthTimeKnown,
@@ -389,6 +405,14 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       logSupabaseFailure("birth details upsert failed", error);
+
+      if ((error as { code?: unknown })?.code === "23505") {
+        return apiError(
+          403,
+          "BIRTH_DETAILS_LOCKED",
+          "Birth details cannot be changed after your profile has been created."
+        );
+      }
 
       return apiError(
         500,

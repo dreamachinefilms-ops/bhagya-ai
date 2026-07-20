@@ -85,7 +85,6 @@ export default function BirthDetailsPage() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isChecking, setIsChecking] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
   const [step, setStep] = useState<OnboardingStep>("form");
   const [welcomeMessage, setWelcomeMessage] = useState("");
   const [welcomeFirstName, setWelcomeFirstName] = useState("there");
@@ -95,14 +94,6 @@ export default function BirthDetailsPage() {
     let isMounted = true;
 
     async function loadBirthDetails() {
-      const editMode =
-        typeof window !== "undefined" &&
-        new URLSearchParams(window.location.search).get("edit") === "1";
-
-      if (isMounted) {
-        setIsEditMode(editMode);
-      }
-
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -151,8 +142,8 @@ export default function BirthDetailsPage() {
           setBirthPlace(data.birthDetails.birthPlace || "");
         }
 
-        if (data.complete && !editMode) {
-          router.replace("/");
+        if (data.complete) {
+          router.replace("/settings");
           return;
         }
       } catch {
@@ -547,11 +538,7 @@ export default function BirthDetailsPage() {
                         background: "linear-gradient(135deg, #38bdf8, #1d4ed8)",
                       }}
                     >
-                      {isSaving
-                        ? "Saving your profile..."
-                        : isEditMode
-                        ? "Update birth profile"
-                        : "Continue to Bhagya"}
+                      {isSaving ? "Saving your profile..." : "Continue to Bhagya"}
                     </button>
                   </div>
                 )}

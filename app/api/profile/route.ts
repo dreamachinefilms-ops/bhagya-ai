@@ -16,11 +16,11 @@ export async function GET(request: Request) {
     const supabase = createSupabaseUserClient(request);
     const [{ data: profile, error }, { data: birthDetails }] = await Promise.all([
       supabase.from("profiles").select("full_name,first_name,created_at").eq("id", user.id).maybeSingle(),
-      supabase.from("user_birth_details").select("date_of_birth,birth_time,birth_time_known,birth_place").eq("user_id", user.id).maybeSingle(),
+      supabase.from("user_birth_details").select("full_name,date_of_birth,birth_time,birth_time_known,birth_place").eq("user_id", user.id).maybeSingle(),
     ]);
     if (error) throw error;
     const fullName = profile?.full_name || user.user_metadata?.full_name || "";
-    return NextResponse.json({ profile: { fullName, firstName: getUserFirstName({ preferredFirstName: profile?.first_name, fullName }), email: user.email || "", createdAt: profile?.created_at || user.created_at, birthDetails: birthDetails ? { dateOfBirth: birthDetails.date_of_birth || "", birthTime: birthDetails.birth_time || "", birthTimeKnown: birthDetails.birth_time_known !== false, birthPlace: birthDetails.birth_place || "" } : null } });
+    return NextResponse.json({ profile: { fullName, firstName: getUserFirstName({ preferredFirstName: profile?.first_name, fullName }), email: user.email || "", createdAt: profile?.created_at || user.created_at, birthDetails: birthDetails ? { fullName: birthDetails.full_name || fullName, dateOfBirth: birthDetails.date_of_birth || "", birthTime: birthDetails.birth_time || "", birthTimeKnown: birthDetails.birth_time_known !== false, birthPlace: birthDetails.birth_place || "" } : null } });
   } catch (error) {
     console.error("[profile] load failed", error);
     return NextResponse.json({ error: "PROFILE_LOAD_FAILED", message: "Your profile could not be loaded. Please try again." }, { status: 500 });

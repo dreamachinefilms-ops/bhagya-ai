@@ -2,6 +2,7 @@ import { createSupabaseUserClient } from "@/lib/backend/supabaseUserClient";
 
 export type SavedBirthDetails = {
   id?: string;
+  fullName?: string | null;
   dateOfBirth?: string | null;
   birthTime?: string | null;
   birthTimeKnown?: boolean | null;
@@ -138,7 +139,7 @@ export async function getSavedBirthDetails({
   const { data, error } = await supabase
     .from("user_birth_details")
     .select(
-      "id,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset,timezone_id"
+      "id,full_name,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset,timezone_id"
     )
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
@@ -154,6 +155,7 @@ export async function getSavedBirthDetails({
 
   return {
     id: data.id,
+    fullName: data.full_name,
     dateOfBirth: data.date_of_birth,
     birthTime: data.birth_time,
     birthTimeKnown: data.birth_time_known,
@@ -165,10 +167,11 @@ export async function getSavedBirthDetails({
   };
 }
 
-export async function upsertBirthDetails({
+export async function createBirthDetails({
   request,
   userId,
   dateOfBirth,
+  fullName,
   birthTime,
   birthTimeKnown,
   birthPlace,
@@ -180,6 +183,7 @@ export async function upsertBirthDetails({
   request: Request;
   userId: string;
   dateOfBirth: string;
+  fullName: string;
   birthTime: string | null;
   birthTimeKnown: boolean;
   birthPlace: string;
@@ -191,9 +195,10 @@ export async function upsertBirthDetails({
   const supabase = createSupabaseUserClient(request);
   const { data, error } = await supabase
     .from("user_birth_details")
-    .upsert(
+    .insert(
     {
       user_id: userId,
+      full_name: fullName,
       date_of_birth: dateOfBirth,
       birth_time: birthTime,
       birth_time_known: birthTimeKnown,
@@ -203,11 +208,10 @@ export async function upsertBirthDetails({
       timezone_offset: timezoneOffset,
       timezone_id: timezoneId,
       updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id" }
+    }
     )
     .select(
-      "id,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset,timezone_id"
+      "id,full_name,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset,timezone_id"
     )
     .single();
 
@@ -224,6 +228,7 @@ export function toBirthDetailsResponse(details: SavedBirthDetails | null) {
 
   return {
     dateOfBirth: details.dateOfBirth || "",
+    fullName: details.fullName || "",
     birthTime: details.birthTime || "",
     birthTimeKnown: details.birthTimeKnown !== false,
     birthPlace: details.birthPlace || "",

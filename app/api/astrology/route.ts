@@ -4,7 +4,6 @@ import {
   getSavedBirthDetails,
   getSavedUserProfile,
   isCompleteBirthDetails,
-  upsertBirthDetails,
 } from "@/lib/backend/birthDetailsMemory";
 import { listChatMessages, saveAiExchange } from "@/lib/backend/chats";
 import {
@@ -169,20 +168,6 @@ export async function POST(request: Request) {
 
     if (!location) {
       return birthDetailsRequiredResponse();
-    }
-
-    if (!savedLocation) {
-      await upsertBirthDetails({
-        request,
-        userId: user.id,
-        dateOfBirth: birthDetails.dateOfBirth,
-        birthTime: birthTimeKnown ? calculationBirthTime : null,
-        birthTimeKnown,
-        birthPlace: location.displayName || location.name || birthDetails.birthPlace,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        timezoneOffset: location.timezoneOffset,
-      });
     }
 
     const datetime = buildProkeralaDateTime({
