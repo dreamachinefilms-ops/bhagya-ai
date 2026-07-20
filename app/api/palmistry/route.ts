@@ -28,12 +28,13 @@ import {
 } from "@/lib/palmistry/prompt";
 import {
   finalizeGuidanceResponse,
-  getFirstName,
   GUIDANCE_OUTPUT_LIMITS,
   resolveFirstNameForResponse,
   selectGuidanceResponseDepth,
 } from "@/lib/guidance/promptCore";
 import { buildPalmImageMissingResponse } from "@/lib/guidanceResponses";
+import { getOrCreateUserPreferences } from "@/lib/backend/userPreferences";
+import { getUserFirstName, preferenceToResponseDepth } from "@/lib/userPreferences";
 
 export const runtime = "nodejs";
 
@@ -440,8 +441,11 @@ async function handleImageAnalysisFromStorage({
     role: message.role === "assistant" ? "assistant" as const : "user" as const,
     content: message.content,
   }));
-  const profile = await getSavedUserProfile({ request, userId }).catch(() => null);
-  const actualFirstName = getFirstName(profile?.fullName || profile?.firstName);
+  const [profile, preferences] = await Promise.all([
+    getSavedUserProfile({ request, userId }).catch(() => null),
+    getOrCreateUserPreferences({ request, userId }),
+  ]);
+  const actualFirstName = getUserFirstName({ preferredFirstName: profile?.firstName, fullName: profile?.fullName });
   const firstNameForResponse = resolveFirstNameForResponse({
     fullName: profile?.fullName,
     firstName: profile?.firstName,
@@ -451,15 +455,16 @@ async function handleImageAnalysisFromStorage({
   });
 
   try {
+    const responseDepth = preferenceToResponseDepth(preferences.responseDetail, question);
     const prompt = buildPalmistryPrompt({
-      language,
-      languageCode,
+      language: preferences.language === "hi" ? "Hindi" : "English",
+      languageCode: preferences.language === "hi" ? "hindi" : "english",
       conversationText,
       historyMessages,
       firstName: firstNameForResponse,
       currentQuestion: question,
       wantsJson: true,
-      responseDepth: "deep",
+      responseDepth,
     });
     const rawAnswer = await callBhagyaOpenAI({
       instructions: prompt.instructions,
@@ -498,7 +503,7 @@ async function handleImageAnalysisFromStorage({
     });
     const answer = finalizeGuidanceResponse({
       answer: parsedAnswer.reading || rawAnswer,
-      depth: "deep",
+      depth: responseDepth,
       evidence: parsedEvidence,
       history: historyMessages,
       firstName: actualFirstName,
@@ -564,7 +569,7 @@ async function handleTextPalmistry({
     return badRequestResponse(validation.error);
   }
 
-  const { chatId, service, question, messages, language, languageCode } =
+  const { chatId, service, question, messages, languageCode } =
     validation.value;
   const rate = checkRateLimit(userId);
 
@@ -572,11 +577,12 @@ async function handleTextPalmistry({
     return rateLimitedResponse(languageCode);
   }
 
-  const [storedMessages, profile] = await Promise.all([
+  const [storedMessages, profile, preferences] = await Promise.all([
     chatId
       ? listChatMessages({ request, userId, chatId })
       : Promise.resolve(messages),
     getSavedUserProfile({ request, userId }).catch(() => null),
+    getOrCreateUserPreferences({ request, userId }),
   ]);
   const palmContext = extractPalmContextFromMessages(storedMessages);
 
@@ -596,7 +602,8 @@ async function handleTextPalmistry({
     return NextResponse.json({ answer, ...saved });
   }
 
-  const cleanHistory = sanitizeMessages(storedMessages, {
+  const contextualMessages = preferences.useChatPersonalization ? storedMessages : messages;
+  const cleanHistory = sanitizeMessages(contextualMessages, {
     service: "palmistry",
     limit: 18,
   });
@@ -604,11 +611,11 @@ async function handleTextPalmistry({
     role: message.role === "assistant" ? "assistant" as const : "user" as const,
     content: message.content,
   }));
-  const conversationText = buildConversationText(storedMessages, question, {
+  const conversationText = buildConversationText(contextualMessages, question, {
     service: "palmistry",
     limit: 18,
   });
-  const actualFirstName = getFirstName(profile?.fullName || profile?.firstName);
+  const actualFirstName = getUserFirstName({ preferredFirstName: profile?.firstName, fullName: profile?.fullName });
   const firstNameForResponse = resolveFirstNameForResponse({
     fullName: profile?.fullName,
     firstName: profile?.firstName,
@@ -616,10 +623,12 @@ async function handleTextPalmistry({
     isInitialReading: false,
     userMessage: question,
   });
-  const responseDepth = selectGuidanceResponseDepth(question);
+  const responseDepth = preferenceToResponseDepth(preferences.responseDetail, question) || selectGuidanceResponseDepth(question);
+  const effectiveLanguageCode = preferences.language === "hi" ? "hindi" : "english";
+  const effectiveLanguage = preferences.language === "hi" ? "Hindi" : "English";
   const prompt = buildPalmistryPrompt({
-    language,
-    languageCode,
+    language: effectiveLanguage,
+    languageCode: effectiveLanguageCode,
     conversationText,
     historyMessages,
     firstName: firstNameForResponse,

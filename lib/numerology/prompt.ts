@@ -5,6 +5,7 @@ import {
   selectGuidanceResponseDepth,
   type GuidanceEvidence,
   type GuidanceHistoryMessage,
+  type GuidanceResponseDepth,
 } from "../guidance/promptCore.ts";
 import type {
   NumerologyProfile,
@@ -78,6 +79,7 @@ export function buildNumerologyPrompt({
   history,
   historyMessages,
   question,
+  responseDepth,
 }: {
   profile: NumerologyProfile;
   firstName?: string | null;
@@ -86,8 +88,9 @@ export function buildNumerologyPrompt({
   history: string;
   historyMessages: GuidanceHistoryMessage[];
   question: string;
+  responseDepth?: GuidanceResponseDepth;
 }) {
-  const depth = selectNumerologyResponseDepth(question);
+  const depth = responseDepth || selectNumerologyResponseDepth(question);
 
   const toPromptNumber = (calculation: {
     reducedNumber: number;

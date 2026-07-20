@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --experimental-strip-types --test lib/numerology/*.test.ts",
+    "test": "node --experimental-strip-types --test lib/numerology/*.test.ts lib/guidance/*.test.ts lib/userPreferences.test.ts",
     "lint": "eslint",
     "android:add": "npx cap add android",
     "android:sync": "npx cap sync android",

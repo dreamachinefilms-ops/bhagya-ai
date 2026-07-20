@@ -36,6 +36,7 @@ import type {
   TarotReadingSummary,
   TarotSpreadType,
 } from "@/lib/tarot/reading";
+import { useUserPreferences } from "@/hooks/useUserPreferences";
 
 type ServiceType = "numerology" | "tarot" | "palmistry" | "astrology";
 
@@ -474,6 +475,7 @@ function timeAgo(ts: number, labels: UiText["timeAgo"]) {
 
 export default function Home() {
   const router = useRouter();
+  const { preferences, isLoading: isLoadingPreferences, isAuthenticated: hasPreferenceSession, updatePreferences } = useUserPreferences();
 
   const [selectedService, setSelectedService] =
     useState<ServiceType>("astrology");
@@ -542,6 +544,15 @@ export default function Home() {
   const selectedLanguageLabel =
     languages.find((lang) => lang.code === selectedLanguage)?.label ||
     "English";
+
+  useEffect(() => {
+    if (!isLoggedIn || isLoadingPreferences || !hasPreferenceSession || activeChatId) return;
+    const language: LanguageCode = preferences.language === "hi" ? "hindi" : "english";
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronize server-backed account preferences after authentication
+    setSelectedLanguage(language);
+    setSelectedService(preferences.defaultService);
+    setHasLoadedLanguage(true);
+  }, [activeChatId, hasPreferenceSession, isLoadingPreferences, isLoggedIn, preferences.defaultService, preferences.language]);
 
   const getAuthHeaders = useCallback(async () => {
     const {
@@ -649,10 +660,16 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (hasLoadedLanguage) {
+    if (hasLoadedLanguage && !isLoggedIn) {
       localStorage.setItem(LANGUAGE_STORAGE_KEY, selectedLanguage);
     }
-  }, [hasLoadedLanguage, selectedLanguage]);
+  }, [hasLoadedLanguage, isLoggedIn, selectedLanguage]);
+
+  useEffect(() => {
+    if (!isLoggedIn || isLoadingPreferences || activeChatId) return;
+    const language = selectedLanguage === "hindi" ? "hi" : selectedLanguage === "english" ? "en" : null;
+    if (language && language !== preferences.language) void updatePreferences({ language });
+  }, [activeChatId, isLoadingPreferences, isLoggedIn, preferences.language, selectedLanguage, updatePreferences]);
 
   useEffect(() => {
     if (isCheckingAuth) return;
@@ -806,7 +823,7 @@ export default function Home() {
     resetTarotFlow();
     setNumerologyError("");
     setIsNumerologyInitializing(false);
-    setSelectedService("astrology");
+    setSelectedService(isLoggedIn ? preferences.defaultService : "astrology");
     setIsLoading(false);
     setIsPalmAnalyzing(false);
     setIsSidebarOpen(false);
@@ -992,7 +1009,7 @@ export default function Home() {
         body: JSON.stringify({
           action: "calculate-profile",
           chatId,
-          timezone: getBrowserTimezone(),
+          timezone: preferences.timezone || getBrowserTimezone(),
           languageCode: selectedLanguage,
         }),
       });
@@ -1693,7 +1710,7 @@ export default function Home() {
           language: selectedLanguageLabel,
           languageCode: selectedLanguage,
           timezone:
-            selectedService === "numerology" ? getBrowserTimezone() : undefined,
+            selectedService === "numerology" ? preferences.timezone || getBrowserTimezone() : undefined,
         }),
       });
 
@@ -2362,6 +2379,12 @@ export default function Home() {
               );
             })}
           </div>
+          {isLoggedIn && <div className="border-t border-white/[0.07] p-3">
+            <Link href="/settings" onClick={() => setIsSidebarOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-white/60 transition hover:bg-white/[0.05] hover:text-sky-200">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15 text-sky-300">⚙</span>
+              Profile & Settings
+            </Link>
+          </div>}
         </aside>
       </div>
 
@@ -2733,12 +2756,10 @@ export default function Home() {
                 />
 
                 {isLoggedIn ? (
-                  <button
-                    onClick={logoutUser}
-                    className="bhagya-pill-btn text-[12px] text-white/60 transition hover:text-sky-300"
-                  >
-                    {t.logout}
-                  </button>
+                  <>
+                    <Link href="/settings" aria-label="Profile & Settings" title="Profile & Settings" className="flex h-9 w-9 items-center justify-center rounded-full border border-sky-400/20 bg-sky-500/10 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/20">ME</Link>
+                    <button onClick={logoutUser} className="bhagya-pill-btn hidden text-[12px] text-white/60 transition hover:text-sky-300 sm:inline-flex">{t.logout}</button>
+                  </>
                 ) : (
                   <Link
                     href="/login"

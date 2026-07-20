@@ -87,6 +87,17 @@ create table if not exists public.numerology_profiles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.user_preferences (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  language text not null default 'en' check (language in ('en', 'hi')),
+  default_service text not null default 'astrology' check (default_service in ('astrology', 'numerology', 'tarot', 'palmistry')),
+  response_detail text not null default 'balanced' check (response_detail in ('concise', 'balanced', 'detailed')),
+  timezone text,
+  use_chat_personalization boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 update public.chats set title = 'Reading' where title is null;
 
 alter table public.chats
@@ -114,8 +125,18 @@ alter table public.user_birth_details enable row level security;
 alter table public.chats enable row level security;
 alter table public.messages enable row level security;
 alter table public.numerology_profiles enable row level security;
+alter table public.user_preferences enable row level security;
 
 drop policy if exists "Users can select own profile" on public.profiles;
+
+drop policy if exists "Users can read own preferences" on public.user_preferences;
+create policy "Users can read own preferences" on public.user_preferences for select to authenticated using (auth.uid() = user_id);
+drop policy if exists "Users can create own preferences" on public.user_preferences;
+create policy "Users can create own preferences" on public.user_preferences for insert to authenticated with check (auth.uid() = user_id);
+drop policy if exists "Users can update own preferences" on public.user_preferences;
+create policy "Users can update own preferences" on public.user_preferences for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "Users can delete own preferences" on public.user_preferences;
+create policy "Users can delete own preferences" on public.user_preferences for delete to authenticated using (auth.uid() = user_id);
 create policy "Users can select own profile"
 on public.profiles for select
 using (auth.uid() = id);
@@ -272,3 +293,8 @@ create trigger set_numerology_profiles_updated_at
 before update on public.numerology_profiles
 for each row
 execute function public.set_updated_at();
+
+drop trigger if exists set_user_preferences_updated_at on public.user_preferences;
+create trigger set_user_preferences_updated_at
+before update on public.user_preferences
+for each row execute function public.set_updated_at();

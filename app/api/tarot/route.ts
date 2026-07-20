@@ -2,6 +2,8 @@ import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/backend/auth";
 import { getSavedUserProfile } from "@/lib/backend/birthDetailsMemory";
+import { getOrCreateUserPreferences } from "@/lib/backend/userPreferences";
+import { getUserFirstName, preferenceToResponseDepth } from "@/lib/userPreferences";
 import {
   findUserChat,
   listChatMessages,
@@ -36,7 +38,6 @@ import {
 } from "@/lib/tarot/prompt";
 import {
   finalizeGuidanceResponse,
-  getFirstName,
   GUIDANCE_OUTPUT_LIMITS,
   resolveFirstNameForResponse,
 } from "@/lib/guidance/promptCore";
@@ -467,8 +468,11 @@ async function handleReveal({
   const historyMessages = [
     { role: "user" as const, content: String(session.question) },
   ];
-  const profile = await getSavedUserProfile({ request, userId }).catch(() => null);
-  const actualFirstName = getFirstName(profile?.fullName || profile?.firstName);
+  const [profile, preferences] = await Promise.all([
+    getSavedUserProfile({ request, userId }).catch(() => null),
+    getOrCreateUserPreferences({ request, userId }),
+  ]);
+  const actualFirstName = getUserFirstName({ preferredFirstName: profile?.firstName, fullName: profile?.fullName });
   const firstNameForResponse = resolveFirstNameForResponse({
     fullName: profile?.fullName,
     firstName: profile?.firstName,
@@ -481,8 +485,8 @@ async function handleReveal({
 
   try {
     const prompt = buildTarotInitialPrompt({
-        language: String(session.language || "English"),
-        languageCode: String(session.language_code || "english"),
+        language: preferences.language === "hi" ? "Hindi" : "English",
+        languageCode: preferences.language === "hi" ? "hindi" : "english",
         firstName: firstNameForResponse,
         question: String(session.question),
         spreadType,
@@ -490,6 +494,7 @@ async function handleReveal({
         cards: drawnCards,
         conversationText,
         historyMessages,
+        responseDepth: preferenceToResponseDepth(preferences.responseDetail, String(session.question)),
       });
     const rawInterpretation = await callGroundedBhagyaOpenAI({
       instructions: prompt.instructions,
@@ -606,7 +611,7 @@ async function handleFollowUp(request: Request, userId: string, body: unknown) {
     return badRequestResponse(validation.error);
   }
 
-  const { chatId, service, question, messages, language, languageCode } =
+  const { chatId, service, question, messages, languageCode } =
     validation.value;
   const rate = checkRateLimit(userId);
 
@@ -614,9 +619,10 @@ async function handleFollowUp(request: Request, userId: string, body: unknown) {
     return rateLimitedResponse(languageCode);
   }
 
-  const [reading, profile, storedMessages] = await Promise.all([
+  const [reading, profile, preferences, storedMessages] = await Promise.all([
     getLatestTarotReading({ request, userId, chatId }),
     getSavedUserProfile({ request, userId }).catch(() => null),
+    getOrCreateUserPreferences({ request, userId }),
     chatId
       ? listChatMessages({ request, userId, chatId })
       : Promise.resolve(messages),
@@ -639,7 +645,8 @@ async function handleFollowUp(request: Request, userId: string, body: unknown) {
     return NextResponse.json({ answer, ...saved });
   }
 
-  const cleanHistory = sanitizeMessages(storedMessages, {
+  const contextualMessages = preferences.useChatPersonalization ? storedMessages : messages;
+  const cleanHistory = sanitizeMessages(contextualMessages, {
     service: "tarot",
     limit: 18,
   });
@@ -647,11 +654,11 @@ async function handleFollowUp(request: Request, userId: string, body: unknown) {
     role: message.role === "assistant" ? "assistant" as const : "user" as const,
     content: message.content,
   }));
-  const conversationText = buildConversationText(storedMessages, question, {
+  const conversationText = buildConversationText(contextualMessages, question, {
     service: "tarot",
     limit: 18,
   });
-  const actualFirstName = getFirstName(profile?.fullName || profile?.firstName);
+  const actualFirstName = getUserFirstName({ preferredFirstName: profile?.firstName, fullName: profile?.fullName });
   const firstNameForResponse = resolveFirstNameForResponse({
     fullName: profile?.fullName,
     firstName: profile?.firstName,
@@ -660,13 +667,14 @@ async function handleFollowUp(request: Request, userId: string, body: unknown) {
     userMessage: question,
   });
   const prompt = buildTarotFollowUpPrompt({
-    language,
-    languageCode,
+    language: preferences.language === "hi" ? "Hindi" : "English",
+    languageCode: preferences.language === "hi" ? "hindi" : "english",
     firstName: firstNameForResponse,
     question,
     reading,
     conversationText,
     historyMessages,
+    responseDepth: preferenceToResponseDepth(preferences.responseDetail, question),
   });
   const rawAnswer = await callGroundedBhagyaOpenAI({
     instructions: prompt.instructions,

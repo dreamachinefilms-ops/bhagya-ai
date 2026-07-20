@@ -156,7 +156,7 @@ export function resolveFirstNameForResponse({
   isInitialReading: boolean;
   userMessage: string;
 }) {
-  const resolved = getFirstName(fullName) || getFirstName(firstName);
+  const resolved = getFirstName(firstName) || getFirstName(fullName);
 
   if (!resolved) return null;
 

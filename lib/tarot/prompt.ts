@@ -60,6 +60,7 @@ export function buildTarotInitialPrompt({
   cards,
   conversationText,
   historyMessages,
+  responseDepth,
 }: {
   language: string;
   languageCode: string;
@@ -70,9 +71,10 @@ export function buildTarotInitialPrompt({
   cards: DrawnTarotCard[];
   conversationText: string;
   historyMessages: GuidanceHistoryMessage[];
+  responseDepth?: GuidanceResponseDepth;
 }) {
-  const depth: GuidanceResponseDepth =
-    spreadType === "three-card" ? "deep" : "standard";
+  const depth: GuidanceResponseDepth = responseDepth ||
+    (spreadType === "three-card" ? "deep" : "standard");
   const evidence = buildTarotEvidence(cards);
   const plan = createGuidanceResponsePlan({
     service: "tarot",
@@ -117,6 +119,7 @@ export function buildTarotFollowUpPrompt({
   reading,
   conversationText,
   historyMessages,
+  responseDepth,
 }: {
   language: string;
   languageCode: string;
@@ -125,8 +128,9 @@ export function buildTarotFollowUpPrompt({
   reading: TarotReadingSummary;
   conversationText: string;
   historyMessages: GuidanceHistoryMessage[];
+  responseDepth?: GuidanceResponseDepth;
 }) {
-  const depth = selectGuidanceResponseDepth(question);
+  const depth = responseDepth || selectGuidanceResponseDepth(question);
   const evidence = buildTarotEvidence(reading.cards);
   const plan = createGuidanceResponsePlan({
     service: "tarot",

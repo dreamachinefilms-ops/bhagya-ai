@@ -23,7 +23,6 @@ import { validateAiRequestBody } from "@/lib/backend/validation";
 import { buildAstrologyPrompt } from "@/lib/astrology/prompt";
 import {
   finalizeGuidanceResponse,
-  getFirstName,
   GUIDANCE_OUTPUT_LIMITS,
   resolveFirstNameForResponse,
   selectGuidanceResponseDepth,
@@ -40,6 +39,8 @@ import {
   buildProkeralaApiFailedResponse,
   buildProkeralaCredentialsMissingResponse,
 } from "@/lib/guidanceResponses";
+import { getOrCreateUserPreferences } from "@/lib/backend/userPreferences";
+import { getUserFirstName, preferenceToResponseDepth } from "@/lib/userPreferences";
 
 const routeName = "api/astrology";
 type BirthDetailKey = "dateOfBirth" | "birthTime" | "birthPlace";
@@ -106,7 +107,7 @@ export async function POST(request: Request) {
       return badRequestResponse(validation.error);
     }
 
-    const { chatId, service, question, messages, language, languageCode } =
+    const { chatId, service, question, messages, languageCode } =
       validation.value;
 
     const rate = checkRateLimit(user.id);
@@ -115,17 +116,19 @@ export async function POST(request: Request) {
       return rateLimitedResponse(languageCode);
     }
 
-    const [savedProfile, savedBirthDetails, storedMessages] = await Promise.all([
+    const [savedProfile, savedBirthDetails, preferences, storedMessages] = await Promise.all([
       getSavedUserProfile({ request, userId: user.id }),
       getSavedBirthDetails({
         request,
         userId: user.id,
       }),
+      getOrCreateUserPreferences({ request, userId: user.id }),
       chatId
         ? listChatMessages({ request, userId: user.id, chatId })
         : Promise.resolve(messages),
     ]);
-    const cleanHistory = sanitizeMessages(storedMessages, {
+    const contextualMessages = preferences.useChatPersonalization ? storedMessages : messages;
+    const cleanHistory = sanitizeMessages(contextualMessages, {
       service: "astrology",
       limit: 18,
     });
@@ -133,7 +136,7 @@ export async function POST(request: Request) {
       role: message.role === "assistant" ? "assistant" as const : "user" as const,
       content: message.content,
     }));
-    const conversationText = buildConversationText(storedMessages, question, {
+    const conversationText = buildConversationText(contextualMessages, question, {
       service: "astrology",
       limit: 18,
     });
@@ -208,9 +211,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ answer, ...saved });
     }
 
-    const actualFirstName = getFirstName(
-      savedProfile?.fullName || savedProfile?.firstName,
-    );
+    const actualFirstName = getUserFirstName({ preferredFirstName: savedProfile?.firstName, fullName: savedProfile?.fullName });
     const firstNameForResponse = resolveFirstNameForResponse({
       fullName: savedProfile?.fullName,
       firstName: savedProfile?.firstName,
@@ -220,10 +221,12 @@ export async function POST(request: Request) {
       ),
       userMessage: question,
     });
-    const responseDepth = selectGuidanceResponseDepth(question);
+    const responseDepth = preferenceToResponseDepth(preferences.responseDetail, question) || selectGuidanceResponseDepth(question);
+    const effectiveLanguageCode = preferences.language === "hi" ? "hindi" : "english";
+    const effectiveLanguage = preferences.language === "hi" ? "Hindi" : "English";
     const prompt = buildAstrologyPrompt({
-        language,
-        languageCode,
+        language: effectiveLanguage,
+        languageCode: effectiveLanguageCode,
         conversationText,
         historyMessages,
         currentQuestion: question,

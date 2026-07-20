@@ -14,7 +14,6 @@ import { callGroundedBhagyaOpenAI } from "@/lib/guidance/generate";
 import { findIncorrectNumerologyClaims } from "@/lib/guidance/groundingChecks";
 import {
   finalizeGuidanceResponse,
-  getFirstName,
   GUIDANCE_OUTPUT_LIMITS,
   resolveFirstNameForResponse,
 } from "@/lib/guidance/promptCore";
@@ -46,6 +45,8 @@ import {
   isCalculationExplanationRequest,
   selectNumerologyResponseDepth,
 } from "@/lib/numerology/prompt";
+import { getOrCreateUserPreferences } from "@/lib/backend/userPreferences";
+import { getUserFirstName, preferenceToResponseDepth } from "@/lib/userPreferences";
 
 const routeName = "api/numerology";
 const allowedActions = new Set(["calculate-profile", "refresh-cycles", "chat"]);
@@ -216,7 +217,8 @@ async function handleProfileAction({
 
   if (!isUuid(chatId)) return badRequestResponse("Invalid chat id.");
 
-  const timezone = getTimezone(body);
+  const preferences = await getOrCreateUserPreferences({ request, userId });
+  const timezone = preferences.timezone || getTimezone(body);
   await verifyNumerologyChat({ request, userId, chatId });
   const result = await getNumerologyProfile({ request, userId, timezone });
   logNumerologyStage("profile ready", {
@@ -321,7 +323,7 @@ async function handleChat({
   });
   if (!validation.ok) return badRequestResponse(validation.error);
 
-  const { chatId, service, question, language, languageCode } = validation.value;
+  const { chatId, service, question, languageCode } = validation.value;
   if (service !== "numerology" || !chatId || !isUuid(chatId)) {
     return badRequestResponse("A valid Numerology chat is required.");
   }
@@ -329,14 +331,15 @@ async function handleChat({
   const rate = checkRateLimit(userId);
   if (!rate.allowed) return rateLimitedResponse(languageCode);
 
-  const timezone = getTimezone(body);
+  const preferences = await getOrCreateUserPreferences({ request, userId });
+  const timezone = preferences.timezone || getTimezone(body);
   await verifyNumerologyChat({ request, userId, chatId });
   const [profileResult, history] = await Promise.all([
     getNumerologyProfile({ request, userId, timezone }),
     buildServerHistory({ request, userId, chatId }),
   ]);
   const { profile, firstName, fullName } = profileResult;
-  const actualFirstName = getFirstName(fullName || firstName);
+  const actualFirstName = getUserFirstName({ preferredFirstName: firstName, fullName });
   const firstNameForResponse = resolveFirstNameForResponse({
     fullName,
     firstName,
@@ -346,7 +349,9 @@ async function handleChat({
     ),
     userMessage: question,
   });
-  const depth = selectNumerologyResponseDepth(question);
+  const depth = preferenceToResponseDepth(preferences.responseDetail, question) || selectNumerologyResponseDepth(question);
+  const effectiveLanguageCode = preferences.language === "hi" ? "hindi" : "english";
+  const effectiveLanguage = preferences.language === "hi" ? "Hindi" : "English";
   const evidence = buildNumerologyEvidence(profile, question);
   let answer: string;
 
@@ -357,11 +362,12 @@ async function handleChat({
       const prompt = buildNumerologyPrompt({
           profile,
           firstName: firstNameForResponse,
-          language,
-          languageCode,
+          language: effectiveLanguage,
+          languageCode: effectiveLanguageCode,
           history: history.text,
           historyMessages: history.messages,
           question,
+          responseDepth: depth,
         });
       const rawAnswer = await callGroundedBhagyaOpenAI({
         instructions: prompt.instructions,
