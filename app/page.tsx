@@ -2271,7 +2271,7 @@ export default function Home() {
           }`}
           style={{
             background:
-              "linear-gradient(180deg, rgba(2,8,23,0.98) 0%, rgba(3,7,18,0.98) 100%)",
+              "linear-gradient(180deg, rgba(7,20,39,0.985) 0%, rgba(3,12,28,0.99) 100%)",
           }}
         >
           {/* Drawer header */}
@@ -2478,7 +2478,7 @@ export default function Home() {
           {chats.length > 0 && (
             <button
               onClick={() => setIsSidebarOpen(true)}
-              className="fixed left-4 top-24 z-30 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/[0.08] bg-black/45 text-white/50 backdrop-blur-2xl transition hover:border-sky-400/35 hover:bg-sky-500/10 hover:text-sky-300 sm:hidden"
+              className="fixed left-4 top-24 z-30 flex h-10 w-10 items-center justify-center rounded-2xl border border-sky-200/[0.10] bg-[#071427]/80 text-sky-100/55 backdrop-blur-2xl transition hover:border-sky-400/35 hover:bg-sky-500/10 hover:text-sky-300 sm:hidden"
               aria-label={t.recent}
               title={t.recent}
             >
@@ -3018,43 +3018,50 @@ export default function Home() {
           width: 36px;
           border: 1px solid transparent;
           border-radius: 10px;
-          color: rgba(255,255,255,0.62);
-          transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
+          color: rgba(180,204,226,0.68);
+          transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
         }
 
-        .bhagya-rail-btn:hover {
-          background: rgba(255,255,255,0.08);
-          border-color: rgba(255,255,255,0.08);
-          color: rgba(255,255,255,0.95);
-          transform: scale(1.04);
+        .bhagya-rail-btn:hover,
+        .bhagya-rail-btn:focus-visible {
+          background: rgba(46,125,181,0.10);
+          border-color: rgba(86,180,239,0.14);
+          color: rgba(225,244,255,0.96);
         }
 
         .bhagya-rail-btn:active {
-          transform: scale(0.96);
+          background: rgba(46,125,181,0.14);
         }
 
         .bhagya-sidebar {
           width: var(--app-sidebar-width);
           height: 100svh;
           padding: calc(env(safe-area-inset-top) + 10px) 7px calc(env(safe-area-inset-bottom) + 10px);
+          border-right: 1px solid rgba(95,159,211,0.12);
+          background: linear-gradient(180deg, rgba(8,20,39,0.985) 0%, rgba(4,13,29,0.99) 100%);
+          box-shadow: inset -1px 0 0 rgba(89,167,224,0.04), 8px 0 28px rgba(0,20,55,0.10);
+          backdrop-filter: blur(18px);
         }
 
         .bhagya-sidebar-logo {
-          background: rgba(56,189,248,0.08);
-          transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
+          border: 1px solid rgba(73,176,235,0.14);
+          background: rgba(9,29,53,0.90);
+          box-shadow: 0 0 18px rgba(36,153,225,0.08);
+          transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
         }
 
         .bhagya-sidebar-logo:hover,
         .bhagya-sidebar-logo:focus-visible {
-          background: rgba(56,189,248,0.14);
-          color: white;
-          transform: scale(1.04);
+          border-color: rgba(86,180,239,0.24);
+          background: rgba(35,105,158,0.16);
+          color: rgba(225,244,255,0.98);
         }
 
         .bhagya-rail-btn-active {
-          background: rgba(56,189,248,0.12);
-          border-color: rgba(73,193,255,0.25);
-          color: rgb(125 211 252);
+          background: linear-gradient(145deg, rgba(15,147,210,0.18), rgba(41,84,184,0.16));
+          border-color: rgba(84,196,255,0.25);
+          box-shadow: 0 0 18px rgba(38,166,235,0.08);
+          color: #69d2ff;
         }
 
         .bhagya-rail-btn-active::before {
@@ -3076,7 +3083,8 @@ export default function Home() {
           overflow: visible;
           border: 1px solid rgba(125,211,252,0.35);
           border-radius: 50%;
-          background: linear-gradient(135deg, #075985, #1d4ed8);
+          background: linear-gradient(145deg, #18a9d8, #3159c8);
+          box-shadow: 0 0 16px rgba(33,166,234,0.16);
           color: white;
           font-size: 9px;
           font-weight: 700;
@@ -3090,11 +3098,12 @@ export default function Home() {
           z-index: 60;
           width: max-content;
           max-width: 190px;
-          border: 1px solid rgba(255,255,255,0.1);
+          border: 1px solid rgba(91,165,218,0.16);
           border-radius: 7px;
-          background: #111318;
+          background: rgba(10,25,46,0.98);
           padding: 5px 8px;
-          color: rgba(255,255,255,0.88);
+          box-shadow: 0 12px 30px rgba(0,0,0,0.24);
+          color: rgba(230,244,255,0.96);
           font-size: 11px;
           line-height: 1rem;
           opacity: 0;
@@ -3121,6 +3130,11 @@ export default function Home() {
         @media (min-width: 640px) {
           .bhagya-history-drawer { left: var(--app-sidebar-width); }
           .bhagya-desktop-shell { margin-left: var(--app-sidebar-width); }
+        }
+
+        .bhagya-history-drawer {
+          border-color: rgba(95,159,211,0.12);
+          box-shadow: 14px 0 36px rgba(0,20,55,0.16);
         }
 
         @media (hover: none) {
@@ -4547,7 +4561,7 @@ function SidebarRail({
 }) {
   return (
     <nav
-      className="bhagya-sidebar fixed left-0 top-0 z-50 hidden flex-col items-center bg-black sm:flex"
+      className="bhagya-sidebar fixed left-0 top-0 z-50 hidden flex-col items-center sm:flex"
       aria-label="Primary navigation"
     >
       <Link
