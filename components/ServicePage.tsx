@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BhagyaLogo from "@/components/branding/BhagyaLogo";
 
 type Field = {
   label: string;
@@ -41,7 +42,7 @@ export default function ServicePage({
               background: `linear-gradient(135deg, ${accentFrom}, ${accentTo})`,
             }}
           >
-            ✨
+            <BhagyaLogo size={31} />
           </div>
           <div>
             <h2 className="text-xl font-bold">Bhagya.ai</h2>

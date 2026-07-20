@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import BhagyaLogo from "@/components/branding/BhagyaLogo";
 
 type BirthDetailsResponse = {
   success?: boolean;
@@ -358,7 +359,7 @@ export default function BirthDetailsPage() {
                 background: "linear-gradient(135deg, #38bdf8, #1d4ed8)",
               }}
             >
-              <span className="text-base">*</span>
+              <BhagyaLogo size={31} />
             </div>
             <div>
               <p className="text-[17px] font-semibold leading-none tracking-tight">

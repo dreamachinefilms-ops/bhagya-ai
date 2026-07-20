@@ -60,6 +60,19 @@ input {
   font-size: 16px;
 }
 
+.bhagya-mandala-logo {
+  display: inline-block;
+  width: var(--bhagya-logo-size, 28px);
+  height: var(--bhagya-logo-size, 28px);
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background-image: url("/mandala.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 270%;
+  filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.18));
+}
+
 .bhagya-mandala-stage {
   top: 50%;
   width: 100%;

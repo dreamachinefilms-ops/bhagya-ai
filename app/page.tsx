@@ -18,6 +18,7 @@ import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
 import LanguageSelector from "@/components/LanguageSelector";
 import PalmScanAnimation from "@/components/PalmScanAnimation";
 import NumerologyBlueprint from "@/components/NumerologyBlueprint";
+import BhagyaLogo from "@/components/branding/BhagyaLogo";
 import { preparePalmImage } from "@/lib/images/preparePalmImage";
 import {
   DEFAULT_LANGUAGE_CODE,
@@ -2283,7 +2284,7 @@ export default function Home() {
                   background: "linear-gradient(135deg, #38bdf8, #1d4ed8)",
                 }}
               >
-                <span className="text-sm">✨</span>
+                <BhagyaLogo size={26} />
               </div>
 
               <div>
@@ -2507,7 +2508,7 @@ export default function Home() {
                   background: "linear-gradient(135deg, #38bdf8, #1d4ed8)",
                 }}
               >
-                <span className="text-base">✨</span>
+                <BhagyaLogo size={29} />
               </div>
 
               <div>
@@ -4357,7 +4358,7 @@ function UniversalMobileLanding({
       <header className="bhagya-mobile-header">
         <Link href="/" className="bhagya-mobile-brand">
           <div className="bhagya-mobile-logo">
-            <span className="text-lg">*</span>
+            <BhagyaLogo size={31} />
           </div>
 
           <div className="min-w-0">
@@ -4569,7 +4570,7 @@ function SidebarRail({
         className="bhagya-sidebar-logo group relative mb-5 flex h-9 w-9 items-center justify-center rounded-full text-sky-300"
         aria-label="Home"
       >
-        <span className="text-sm" aria-hidden="true">✨</span>
+        <BhagyaLogo size={27} />
         <span className="bhagya-rail-tooltip">Home</span>
       </Link>
 

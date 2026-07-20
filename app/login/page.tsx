@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import LanguageSelector from "@/components/LanguageSelector";
+import BhagyaLogo from "@/components/branding/BhagyaLogo";
 import {
   DEFAULT_LANGUAGE_CODE,
   LANGUAGE_DEFAULT_MIGRATION_KEY,
@@ -296,7 +297,7 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
               background: "linear-gradient(135deg, #38bdf8, #1d4ed8)",
             }}
           >
-            <span className="text-base">✨</span>
+            <BhagyaLogo size={27} />
           </div>
 
           <div>
