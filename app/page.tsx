@@ -2226,6 +2226,17 @@ export default function Home() {
         className={showMobileLanding ? "hidden min-[600px]:block" : ""}
       />
 
+      {!isPreparingBirthProfile && (
+        <SidebarRail
+          isLoggedIn={isLoggedIn}
+          isChatsOpen={isSidebarOpen}
+          userInitials={userInitials}
+          userAvatarUrl={userAvatarUrl}
+          onNewMessage={startNewChat}
+          onOpenRecent={() => setIsSidebarOpen(true)}
+        />
+      )}
+
       {/* ── Subtle vignette overlay ── */}
       <div
         className={`pointer-events-none absolute inset-0 z-0 ${
@@ -2460,14 +2471,14 @@ export default function Home() {
 
       {!hasStarted && !isPreparingBirthProfile && (
         <div
-          className={`bhagya-landing relative z-10 min-h-[100svh] flex-col overflow-hidden ${
+          className={`bhagya-desktop-shell bhagya-landing relative z-10 min-h-[100svh] flex-col overflow-hidden ${
             !isLoggedIn ? "hidden min-[600px]:flex" : "flex"
           }`}
         >
           {chats.length > 0 && (
             <button
               onClick={() => setIsSidebarOpen(true)}
-              className="fixed left-4 top-24 z-30 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/[0.08] bg-black/45 text-white/50 backdrop-blur-2xl transition hover:border-sky-400/35 hover:bg-sky-500/10 hover:text-sky-300"
+              className="fixed left-4 top-24 z-30 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/[0.08] bg-black/45 text-white/50 backdrop-blur-2xl transition hover:border-sky-400/35 hover:bg-sky-500/10 hover:text-sky-300 sm:hidden"
               aria-label={t.recent}
               title={t.recent}
             >
@@ -2619,76 +2630,6 @@ export default function Home() {
       ══════════════════════════════════════════ */}
       {hasStarted && !isPreparingBirthProfile && (
         <div className="relative z-10 flex h-[100dvh] min-h-0 overflow-hidden">
-          {/* ── Left icon rail ── */}
-          <nav className="bhagya-sidebar fixed left-0 top-0 z-30 hidden flex-col items-center bg-black sm:flex" aria-label="Primary navigation">
-            {/* Logo mark */}
-            <Link
-              href="/"
-              className="bhagya-sidebar-logo group relative mb-5 flex h-9 w-9 items-center justify-center rounded-full text-sky-300"
-              aria-label="Bhagya.ai home"
-            >
-              <span className="text-sm">✨</span>
-            </Link>
-
-            {/* New chat */}
-            <button
-              onClick={startNewChat}
-              className="bhagya-rail-btn group relative mb-2"
-              aria-label={t.newReading}
-            >
-              <RailIcon>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                >
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
-                </svg>
-              </RailIcon>
-              <span className="bhagya-rail-tooltip">{t.newReading}</span>
-            </button>
-
-            {/* Open recent chats */}
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className={`bhagya-rail-btn group relative ${isSidebarOpen ? "bhagya-rail-btn-active" : ""}`}
-              aria-label={t.recentReadings}
-              aria-current={isSidebarOpen ? "page" : undefined}
-            >
-              <RailIcon>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                >
-                  <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
-                  <line x1="8" y1="9" x2="16" y2="9" />
-                  <line x1="8" y1="13" x2="13" y2="13" />
-                </svg>
-              </RailIcon>
-              <span className="bhagya-rail-tooltip">{t.recentReadings}</span>
-            </button>
-
-            {/* Spacer */}
-            <div className="flex-1" />
-
-            {isLoggedIn && (
-              <Link href="/settings" className="bhagya-sidebar-avatar group relative" aria-label="Profile & Settings">
-                {userAvatarUrl ? <img src={userAvatarUrl} alt="" className="h-full w-full rounded-full object-cover" /> : userInitials}
-                <span className="bhagya-rail-tooltip">Profile & Settings</span>
-              </Link>
-            )}
-          </nav>
-
           {/* ── Main chat area ── */}
           <section className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden pl-0 sm:pl-[var(--app-sidebar-width)]">
             {/* Chat header */}
@@ -3075,13 +3016,15 @@ export default function Home() {
           justify-content: center;
           height: 36px;
           width: 36px;
-          border-radius: 50%;
-          color: rgba(255,255,255,0.52);
+          border: 1px solid transparent;
+          border-radius: 10px;
+          color: rgba(255,255,255,0.62);
           transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
         }
 
         .bhagya-rail-btn:hover {
           background: rgba(255,255,255,0.08);
+          border-color: rgba(255,255,255,0.08);
           color: rgba(255,255,255,0.95);
           transform: scale(1.04);
         }
@@ -3110,6 +3053,7 @@ export default function Home() {
 
         .bhagya-rail-btn-active {
           background: rgba(56,189,248,0.12);
+          border-color: rgba(73,193,255,0.25);
           color: rgb(125 211 252);
         }
 
@@ -3176,6 +3120,7 @@ export default function Home() {
 
         @media (min-width: 640px) {
           .bhagya-history-drawer { left: var(--app-sidebar-width); }
+          .bhagya-desktop-shell { margin-left: var(--app-sidebar-width); }
         }
 
         @media (hover: none) {
@@ -4583,6 +4528,91 @@ function MobileLandingBackground() {
 
 function RailIcon({ children }: { children: ReactNode }) {
   return <span className="flex items-center justify-center">{children}</span>;
+}
+
+function SidebarRail({
+  isLoggedIn,
+  isChatsOpen,
+  userInitials,
+  userAvatarUrl,
+  onNewMessage,
+  onOpenRecent,
+}: {
+  isLoggedIn: boolean;
+  isChatsOpen: boolean;
+  userInitials: string;
+  userAvatarUrl: string;
+  onNewMessage: () => void;
+  onOpenRecent: () => void;
+}) {
+  return (
+    <nav
+      className="bhagya-sidebar fixed left-0 top-0 z-50 hidden flex-col items-center bg-black sm:flex"
+      aria-label="Primary navigation"
+    >
+      <Link
+        href="/"
+        className="bhagya-sidebar-logo group relative mb-5 flex h-9 w-9 items-center justify-center rounded-full text-sky-300"
+        aria-label="Home"
+      >
+        <span className="text-sm" aria-hidden="true">✨</span>
+        <span className="bhagya-rail-tooltip">Home</span>
+      </Link>
+
+      <button
+        type="button"
+        onClick={onNewMessage}
+        className="bhagya-rail-btn group relative mb-2"
+        aria-label="New message"
+      >
+        <RailIcon>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+          </svg>
+        </RailIcon>
+        <span className="bhagya-rail-tooltip">New message</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={onOpenRecent}
+        className={`bhagya-rail-btn group relative ${isChatsOpen ? "bhagya-rail-btn-active" : ""}`}
+        aria-label="Recent messages"
+        aria-current={isChatsOpen ? "page" : undefined}
+        data-active={isChatsOpen}
+      >
+        <RailIcon>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
+            <line x1="8" y1="9" x2="16" y2="9" />
+            <line x1="8" y1="13" x2="13" y2="13" />
+          </svg>
+        </RailIcon>
+        <span className="bhagya-rail-tooltip">Recent messages</span>
+      </button>
+
+      <div className="flex-1" />
+
+      <Link
+        href={isLoggedIn ? "/settings" : "/login"}
+        className="bhagya-sidebar-avatar group relative"
+        aria-label="Profile and settings"
+      >
+        {isLoggedIn && userAvatarUrl ? (
+          <img src={userAvatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
+        ) : isLoggedIn ? (
+          userInitials.charAt(0)
+        ) : (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 21a8 8 0 0 1 16 0" />
+          </svg>
+        )}
+        <span className="bhagya-rail-tooltip">Profile &amp; Settings</span>
+      </Link>
+    </nav>
+  );
 }
 
 /* ── Chat input composer ── */
