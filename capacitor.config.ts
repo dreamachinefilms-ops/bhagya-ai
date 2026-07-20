@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.dreamachinefilms.bhagya",
-  appName: "Bhagya.ai",
+  appName: "Bhagya",
   webDir: "out",
   server: {
     url: "https://bhagya-ai.vercel.app",

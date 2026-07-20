@@ -81,7 +81,7 @@ export function safeErrorResponse(error: unknown, routeName: string, userId?: st
 
   return NextResponse.json(
     safeApiError(
-      "Something went wrong while connecting to Bhagya.ai. Please try again."
+      "Something went wrong while connecting to Bhagya. Please try again."
     ),
     { status: 500 }
   );

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bhagya.ai",
+  title: "Bhagya",
   description: "Astrology, numerology, tarot, and palmistry guidance.",
 };
 

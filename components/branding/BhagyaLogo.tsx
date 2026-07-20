@@ -24,7 +24,7 @@ export default function BhagyaLogo({
     <span className="inline-flex items-center gap-2.5">
       {icon}
       <span className="text-left">
-        <span className="block font-semibold leading-none tracking-tight">Bhagya.ai</span>
+        <span className="block font-semibold leading-none tracking-tight">Bhagya</span>
         <span className="mt-1 block text-[0.7em] leading-none text-sky-300/70">AI Spiritual Guidance</span>
       </span>
     </span>

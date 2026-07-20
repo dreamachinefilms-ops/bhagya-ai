@@ -45,7 +45,7 @@ export default function ServicePage({
             <BhagyaLogo size={31} />
           </div>
           <div>
-            <h2 className="text-xl font-bold">Bhagya.ai</h2>
+            <h2 className="text-xl font-bold">Bhagya</h2>
             <p className="text-xs font-medium text-[#7B4E00]">
               AI Spiritual Guidance
             </p>

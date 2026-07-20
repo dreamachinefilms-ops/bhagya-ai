@@ -363,7 +363,7 @@ export default function BirthDetailsPage() {
             </div>
             <div>
               <p className="text-[17px] font-semibold leading-none tracking-tight">
-                Bhagya.ai
+                Bhagya
               </p>
               <p className="mt-0.5 text-[12px] leading-none text-sky-300/70">
                 Birth Profile
