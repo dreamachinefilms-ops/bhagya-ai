@@ -21,6 +21,14 @@ check (response_detail in ('concise', 'balanced', 'detailed'));
 
 alter table public.user_preferences enable row level security;
 
+create or replace function public.set_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 drop policy if exists "Users can read own preferences" on public.user_preferences;
 create policy "Users can read own preferences" on public.user_preferences
 for select to authenticated using (auth.uid() = user_id);

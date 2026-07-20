@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 type BirthDetailsResponse = {
@@ -10,6 +10,8 @@ type BirthDetailsResponse = {
   code?: string;
   message?: string;
   complete?: boolean;
+  exists?: boolean;
+  locked?: boolean;
   profile?: {
     fullName?: string;
     firstName?: string;
@@ -47,6 +49,7 @@ const birthProfileErrorMessages: Record<string, string> = {
 };
 
 type OnboardingStep = "form" | "preparing" | "welcome";
+type BirthProfileState = "checking" | "missing" | "existing" | "error";
 
 function getMetadataName(metadata: Record<string, unknown> | undefined) {
   const fullName = metadata?.full_name;
@@ -83,17 +86,18 @@ export default function BirthDetailsPage() {
   const [birthPlace, setBirthPlace] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [isChecking, setIsChecking] = useState(true);
+  const [profileState, setProfileState] = useState<BirthProfileState>("checking");
   const [isSaving, setIsSaving] = useState(false);
   const [step, setStep] = useState<OnboardingStep>("form");
   const [welcomeMessage, setWelcomeMessage] = useState("");
   const [welcomeFirstName, setWelcomeFirstName] = useState("there");
   const [canBeginReading, setCanBeginReading] = useState(false);
+  const loadRequestRef = useRef(0);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadBirthDetails() {
+  const loadBirthDetails = useCallback(async () => {
+      const requestNumber = ++loadRequestRef.current;
+      setProfileState("checking");
+      setErrors({});
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -103,7 +107,7 @@ export default function BirthDetailsPage() {
         return;
       }
 
-      if (isMounted) {
+      if (requestNumber === loadRequestRef.current) {
         setFullName(
           getMetadataName(
             session.user.user_metadata as Record<string, unknown> | undefined
@@ -129,11 +133,11 @@ export default function BirthDetailsPage() {
 
         const data = (await res.json()) as BirthDetailsResponse;
 
-        if (data.profile?.fullName && isMounted) {
+        if (data.profile?.fullName && requestNumber === loadRequestRef.current) {
           setFullName(data.profile.fullName);
         }
 
-        if (data.birthDetails && isMounted) {
+        if (data.birthDetails && requestNumber === loadRequestRef.current) {
           const known = data.birthDetails.birthTimeKnown !== false;
 
           setDateOfBirth(data.birthDetails.dateOfBirth || "");
@@ -142,33 +146,38 @@ export default function BirthDetailsPage() {
           setBirthPlace(data.birthDetails.birthPlace || "");
         }
 
-        if (data.complete) {
-          router.replace("/settings");
+        if (data.exists === true) {
+          setProfileState("existing");
+          router.replace("/");
           return;
         }
+        if (data.exists === false && requestNumber === loadRequestRef.current) {
+          setProfileState("missing");
+          return;
+        }
+        throw new Error("Birth profile response did not include an existence state.");
       } catch {
-        if (isMounted) {
+        if (requestNumber === loadRequestRef.current) {
+          setProfileState("error");
           setErrors({
             form: "Could not load your birth profile. Please try again.",
           });
         }
-      } finally {
-        if (isMounted) {
-          setIsChecking(false);
-        }
       }
-    }
+  }, [router]);
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initialize the authenticated birth-profile state after mount
     void loadBirthDetails();
 
     return () => {
-      isMounted = false;
+      loadRequestRef.current += 1;
       if (redirectTimeoutRef.current) clearTimeout(redirectTimeoutRef.current);
       if (enableButtonTimeoutRef.current) {
         clearTimeout(enableButtonTimeoutRef.current);
       }
     };
-  }, [router]);
+  }, [loadBirthDetails]);
 
   function validateForm() {
     const nextErrors: FieldErrors = {};
@@ -235,6 +244,7 @@ export default function BirthDetailsPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (profileState !== "missing" || isSaving) return;
     if (!validateForm()) return;
 
     const {
@@ -300,6 +310,7 @@ export default function BirthDetailsPage() {
         token,
         data?.profile?.firstName || getFirstName(fullName)
       );
+      setProfileState("existing");
     } catch {
       setErrors({
         form: "Could not save your birth profile. Please try again.",
@@ -405,11 +416,20 @@ export default function BirthDetailsPage() {
                 onSubmit={handleSubmit}
                 className="rounded-[24px] border border-white/10 bg-white/[0.055] p-4 shadow-2xl backdrop-blur-2xl sm:p-5"
               >
-                {isChecking || step === "preparing" ? (
+                {profileState === "checking" || profileState === "existing" || step === "preparing" ? (
                   <div className="py-12 text-center text-[15px] text-white/55">
                     {step === "preparing"
                       ? "Preparing your first Bhagya reading..."
                       : "Preparing your Bhagya profile..."}
+                  </div>
+                ) : profileState === "error" ? (
+                  <div className="py-8 text-center">
+                    <p className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+                      {errors.form || "Could not load your birth profile. Please try again."}
+                    </p>
+                    <button type="button" onClick={() => void loadBirthDetails()} className="mt-4 min-h-12 rounded-2xl bg-sky-500/15 px-5 text-sm font-semibold text-sky-100 ring-1 ring-sky-400/25">
+                      Retry
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-4">

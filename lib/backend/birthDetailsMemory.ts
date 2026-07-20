@@ -136,7 +136,7 @@ export async function getSavedBirthDetails({
 }): Promise<SavedBirthDetails | null> {
   const supabase = createSupabaseUserClient(request);
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("user_birth_details")
     .select(
       "id,full_name,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset,timezone_id"
@@ -145,6 +145,24 @@ export async function getSavedBirthDetails({
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  if (error?.code === "42703") {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[birth-details] full_name column unavailable; using legacy read", {
+        code: error.code,
+        query: "user_birth_details.select(<legacy-columns>).eq(user_id,<authenticated-user>)",
+      });
+    }
+    const legacy = await supabase
+      .from("user_birth_details")
+      .select("id,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset,timezone_id")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    data = legacy.data ? { ...legacy.data, full_name: null } : null;
+    error = legacy.error;
+  }
 
   if (error) {
     logSupabaseError("fetch birth details failed", error);

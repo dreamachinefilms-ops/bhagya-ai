@@ -12,10 +12,13 @@ export async function getOrCreateUserPreferences({ request, userId, legacyLangua
     ...DEFAULT_USER_PREFERENCES,
     language: legacyLanguage === "hindi" || legacyLanguage === "hi" ? "hi" as const : "en" as const,
   };
-  const { data: created, error: createError } = await supabase.from("user_preferences")
+  const { error: createError } = await supabase.from("user_preferences")
     .upsert({ user_id: userId, ...toPreferenceRow(defaults) }, { onConflict: "user_id", ignoreDuplicates: true })
-    .select("*").single();
+    ;
   if (createError) throw createError;
+  const { data: created, error: reloadError } = await supabase.from("user_preferences")
+    .select("*").eq("user_id", userId).single();
+  if (reloadError) throw reloadError;
   return fromPreferenceRow(created);
 }
 

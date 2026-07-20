@@ -46,7 +46,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
     void refreshPreferences();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") { setIsAuthenticated(false); setPreferences(DEFAULT_USER_PREFERENCES); setIsLoading(false); }
-      else void refreshPreferences();
+      else if (event !== "INITIAL_SESSION") void refreshPreferences();
     });
     return () => subscription.unsubscribe();
   }, [refreshPreferences]);

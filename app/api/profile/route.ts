@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/backend/auth";
 import { createSupabaseUserClient } from "@/lib/backend/supabaseUserClient";
 import { getUserFirstName } from "@/lib/userPreferences";
+import { getSavedBirthDetails } from "@/lib/backend/birthDetailsMemory";
 
 function validName(value: unknown) {
   if (typeof value !== "string") return null;
@@ -14,13 +15,13 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "UNAUTHORIZED", message: "Your session has expired. Please sign in again." }, { status: 401 });
   try {
     const supabase = createSupabaseUserClient(request);
-    const [{ data: profile, error }, { data: birthDetails }] = await Promise.all([
+    const [{ data: profile, error }, birthDetails] = await Promise.all([
       supabase.from("profiles").select("full_name,first_name,created_at").eq("id", user.id).maybeSingle(),
-      supabase.from("user_birth_details").select("full_name,date_of_birth,birth_time,birth_time_known,birth_place").eq("user_id", user.id).maybeSingle(),
+      getSavedBirthDetails({ request, userId: user.id }),
     ]);
     if (error) throw error;
     const fullName = profile?.full_name || user.user_metadata?.full_name || "";
-    return NextResponse.json({ profile: { fullName, firstName: getUserFirstName({ preferredFirstName: profile?.first_name, fullName }), email: user.email || "", createdAt: profile?.created_at || user.created_at, birthDetails: birthDetails ? { fullName: birthDetails.full_name || fullName, dateOfBirth: birthDetails.date_of_birth || "", birthTime: birthDetails.birth_time || "", birthTimeKnown: birthDetails.birth_time_known !== false, birthPlace: birthDetails.birth_place || "" } : null } });
+    return NextResponse.json({ profile: { fullName, firstName: getUserFirstName({ preferredFirstName: profile?.first_name, fullName }), email: user.email || "", createdAt: profile?.created_at || user.created_at, birthDetails: birthDetails ? { fullName: birthDetails.fullName || fullName, dateOfBirth: birthDetails.dateOfBirth || "", birthTime: birthDetails.birthTime || "", birthTimeKnown: birthDetails.birthTimeKnown !== false, birthPlace: birthDetails.birthPlace || "" } : null } });
   } catch (error) {
     console.error("[profile] load failed", error);
     return NextResponse.json({ error: "PROFILE_LOAD_FAILED", message: "Your profile could not be loaded. Please try again." }, { status: 500 });

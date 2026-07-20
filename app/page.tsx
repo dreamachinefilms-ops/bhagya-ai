@@ -104,6 +104,7 @@ type Chat = {
 };
 
 type BirthDetailsStatus = {
+  exists?: boolean;
   complete?: boolean;
   code?: string;
 };
@@ -723,7 +724,12 @@ export default function Home() {
 
         const data = (await res.json()) as BirthDetailsStatus;
 
-        if (!res.ok || !data.complete) {
+        if (!res.ok) {
+          router.replace("/birth-details");
+          return;
+        }
+
+        if (data.exists !== true) {
           router.replace("/birth-details");
           return;
         }

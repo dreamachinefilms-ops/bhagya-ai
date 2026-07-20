@@ -35,6 +35,7 @@ function apiError(
   return Response.json(
     {
       success: false,
+      error: code,
       code,
       message,
     },
@@ -245,18 +246,18 @@ export async function GET(request: Request) {
 
       return apiError(
         500,
-        isSchemaMismatch(error)
-          ? "DATABASE_SCHEMA_MISMATCH"
-          : "UNKNOWN_ERROR",
-        "We could not load your birth profile right now. Please try again."
+        "BIRTH_DETAILS_LOAD_FAILED",
+        "Your birth profile could not be loaded."
       );
     }
 
     return Response.json({
       success: true,
+      exists: Boolean(birthDetails),
+      locked: Boolean(birthDetails),
       complete: isCompleteBirthProfile({ profile, birthDetails }),
       profile: {
-        fullName: profile?.fullName || "",
+        fullName: birthDetails?.fullName || profile?.fullName || "",
         firstName: profile?.firstName || "",
       },
       birthDetails: toBirthDetailsResponse(birthDetails),
@@ -264,8 +265,8 @@ export async function GET(request: Request) {
   } catch (error) {
     return apiError(
       500,
-      "UNKNOWN_ERROR",
-      "We could not load your birth profile right now. Please try again.",
+      "BIRTH_DETAILS_LOAD_FAILED",
+      "Your birth profile could not be loaded.",
       {
         routeName,
         userId,

@@ -10,6 +10,9 @@ where birth.user_id = profile.id
 
 alter table public.user_birth_details enable row level security;
 
+create unique index if not exists user_birth_details_user_id_unique
+on public.user_birth_details (user_id);
+
 drop policy if exists "Users can select own birth details" on public.user_birth_details;
 drop policy if exists "Users can read own birth details" on public.user_birth_details;
 create policy "Users can read own birth details"

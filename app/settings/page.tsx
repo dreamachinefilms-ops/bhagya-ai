@@ -35,7 +35,7 @@ export default function SettingsPage() {
     let active = true;
     (async () => {
       const auth = await headers();
-      if (!auth) { if (!preferencesLoading) router.replace("/login?next=/settings"); return; }
+      if (!auth) { router.replace("/login?next=/settings"); return; }
       try {
         const response = await fetch("/api/profile", { headers: auth });
         const data = await response.json() as { profile?: ProfileData };
@@ -45,7 +45,7 @@ export default function SettingsPage() {
       finally { if (active) setLoading(false); }
     })();
     return () => { active = false; };
-  }, [preferencesLoading, router]);
+  }, [router]);
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault(); setStatus("Saving…");
