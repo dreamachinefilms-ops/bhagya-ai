@@ -91,12 +91,13 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
     if (!force && attemptedUserIdRef.current === userId) return;
     attemptedUserIdRef.current = userId;
     if (!cached) setIsLoading(true);
-    setError(null);
+    if (!force) setError(null);
     try {
       const loaded = await fetchPreferencesOnce(userId, session.access_token, force);
       if (currentUserIdRef.current !== userId) return;
       setPreferences(loaded);
       setHasLoaded(true);
+      setError(null);
     } catch {
       if (currentUserIdRef.current === userId) setError("Your preferences could not be loaded. Please try again.");
     } finally {

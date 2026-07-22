@@ -9,6 +9,15 @@ create table if not exists public.user_preferences (
   updated_at timestamptz not null default now()
 );
 
+alter table public.user_preferences add column if not exists user_id uuid references auth.users(id) on delete cascade;
+alter table public.user_preferences add column if not exists language text not null default 'en';
+alter table public.user_preferences add column if not exists default_service text not null default 'astrology';
+alter table public.user_preferences add column if not exists response_detail text not null default 'balanced';
+alter table public.user_preferences add column if not exists timezone text;
+alter table public.user_preferences add column if not exists use_chat_personalization boolean not null default true;
+alter table public.user_preferences add column if not exists created_at timestamptz not null default now();
+alter table public.user_preferences add column if not exists updated_at timestamptz not null default now();
+
 create unique index if not exists user_preferences_user_id_unique
 on public.user_preferences(user_id);
 
@@ -49,3 +58,5 @@ drop trigger if exists set_user_preferences_updated_at on public.user_preference
 create trigger set_user_preferences_updated_at
 before update on public.user_preferences
 for each row execute function public.set_updated_at();
+
+notify pgrst, 'reload schema';
