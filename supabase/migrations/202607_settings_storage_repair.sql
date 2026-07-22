@@ -33,6 +33,9 @@ check (response_detail in ('concise', 'balanced', 'detailed'));
 
 alter table public.user_preferences enable row level security;
 
+revoke all on public.user_preferences from anon;
+grant select, insert, update on public.user_preferences to authenticated;
+
 drop policy if exists "Users can read own preferences" on public.user_preferences;
 create policy "Users can read own preferences" on public.user_preferences
 for select to authenticated using (auth.uid() = user_id);
