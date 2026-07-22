@@ -39,6 +39,7 @@ import type {
 } from "@/lib/tarot/reading";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useSettingsProfile } from "@/components/providers/SettingsProfileProvider";
+import TopNavigation from "@/components/navigation/TopNavigation";
 
 type ServiceType = "numerology" | "tarot" | "palmistry" | "astrology";
 
@@ -112,6 +113,7 @@ type BirthDetailsStatus = {
 };
 
 const PENDING_QUESTION_KEY = "bhagya_pending_question_v1";
+const PENDING_SERVICE_KEY = "bhagya_pending_service_v1";
 const IMAGE_MESSAGE_TYPE = "bhagya.image";
 const TAROT_MESSAGE_TYPE = "bhagya.tarot";
 const PALM_UPLOAD_TEXT = "Palm photo uploaded for analysis.";
@@ -843,11 +845,16 @@ export default function Home() {
 
   useEffect(() => {
     const pendingQuestion = localStorage.getItem(PENDING_QUESTION_KEY);
+    const pendingService = localStorage.getItem(PENDING_SERVICE_KEY);
 
     if (pendingQuestion) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the question saved before the auth redirect
       setQuestion(pendingQuestion);
       localStorage.removeItem(PENDING_QUESTION_KEY);
+    }
+    if (pendingService === "astrology") {
+      setSelectedService("astrology");
+      localStorage.removeItem(PENDING_SERVICE_KEY);
     }
   }, []);
 
@@ -2539,7 +2546,7 @@ export default function Home() {
           )}
 
           {/* Header */}
-          <header className="flex w-full items-center justify-between px-4 pb-3 pt-[calc(env(safe-area-inset-top)+16px)] sm:px-8 sm:py-5">
+          <header className="flex w-full items-center justify-between gap-3 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+16px)] sm:px-8 sm:py-5">
             <Link href="/" className="group flex items-center gap-2.5">
               <div
                 className="flex h-11 w-11 items-center justify-center rounded-2xl shadow-lg shadow-sky-500/20 transition group-hover:scale-105 sm:h-9 sm:w-9"
@@ -2559,6 +2566,8 @@ export default function Home() {
                 </p>
               </div>
             </Link>
+
+            <div className="ml-auto"><TopNavigation /></div>
 
             <div className="bhagya-landing-actions flex items-center gap-2">
               <LanguageSelector
@@ -4463,6 +4472,7 @@ function UniversalMobileLanding({
         </Link>
 
         <div className="bhagya-mobile-actions">
+          <div className="bhagya-top-nav-slot"><TopNavigation accountLink={{ href: "/login", label: t.signIn }} /></div>
           <div className="bhagya-mobile-language">
             <LanguageSelector
               selectedLanguage={selectedLanguage}

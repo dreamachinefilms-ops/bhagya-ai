@@ -468,6 +468,21 @@ input {
   }
 }
 
+@media (max-width: 480px) {
+  .bhagya-mobile-header:has(.bhagya-top-nav-slot) .bhagya-mobile-brand-subtitle {
+    display: none;
+  }
+
+  .bhagya-mobile-header:has(.bhagya-top-nav-slot) .bhagya-mobile-logo {
+    width: 42px;
+    height: 42px;
+  }
+
+  .bhagya-mobile-header:has(.bhagya-top-nav-slot) .bhagya-mobile-signin {
+    display: none;
+  }
+}
+
 @media (max-height: 700px) {
   .bhagya-mobile-main {
     align-items: flex-start;

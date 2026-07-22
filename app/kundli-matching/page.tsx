@@ -1,0 +1,6 @@
+import PublicPageShell from "@/components/layout/PublicPageShell";
+
+export default function KundliMatchingPage() {
+  const topics = ["Guna Milan", "Emotional dynamics", "Communication", "Shared strengths", "Long-term alignment", "Areas of adjustment"];
+  return <PublicPageShell><div className="max-w-3xl"><span className="rounded-full border border-amber-300/20 bg-amber-300/[.07] px-3 py-1 text-xs font-medium text-amber-200">Coming Soon</span><h1 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">Kundli Matching</h1><p className="mt-5 text-lg leading-8 text-white/50">Compare two birth profiles to explore compatibility, shared strengths and potential areas of adjustment.</p><div className="mt-9 rounded-3xl border border-white/10 bg-[#071225]/85 p-6 sm:p-8"><h2 className="text-xl font-semibold">In development</h2><p className="mt-3 leading-7 text-white/45">Bhagya does not yet have a verified two-profile matching engine, so no compatibility score or fabricated result is generated here.</p><div className="mt-6 grid gap-3 sm:grid-cols-2">{topics.map((topic) => <div key={topic} className="rounded-xl border border-white/[.08] bg-white/[.025] px-4 py-3 text-sm text-white/60">{topic}</div>)}</div></div></div></PublicPageShell>;
+}
