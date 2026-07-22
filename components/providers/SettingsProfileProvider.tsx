@@ -9,6 +9,8 @@ export type BirthDetails = {
   birthTime: string;
   birthTimeKnown: boolean;
   birthPlace: string;
+  correctionUsed: boolean;
+  correctedAt: string | null;
 };
 
 export type ProfileData = {

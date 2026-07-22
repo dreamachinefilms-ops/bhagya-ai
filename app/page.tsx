@@ -113,7 +113,7 @@ type BirthDetailsStatus = {
 };
 
 const PENDING_QUESTION_KEY = "bhagya_pending_question_v1";
-const PENDING_SERVICE_KEY = "bhagya_pending_service_v1";
+const verifiedBirthProfileUsers = new Set<string>();
 const IMAGE_MESSAGE_TYPE = "bhagya.image";
 const TAROT_MESSAGE_TYPE = "bhagya.tarot";
 const PALM_UPLOAD_TEXT = "Palm photo uploaded for analysis.";
@@ -519,6 +519,7 @@ export default function Home() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(null);
   const [userInitials, setUserInitials] = useState("ME");
   const [userAvatarUrl, setUserAvatarUrl] = useState("");
   const [userDisplayName, setUserDisplayName] = useState("");
@@ -550,9 +551,8 @@ export default function Home() {
     selectedService === "tarot" &&
     (!activeChatHasTarotReading || tarotStatus !== "idle");
   const hasStarted = Boolean(activeChatId);
-  const isPreparingBirthProfile = isLoggedIn && isCheckingBirthProfile;
   const showMobileLanding =
-    !isLoggedIn && !hasStarted && !isPreparingBirthProfile;
+    !isLoggedIn && !hasStarted;
   const selectedApi = services.find((s) => s.id === selectedService)?.api;
   const t = UI_TEXT[selectedLanguage];
   const selectedLanguageLabel =
@@ -706,7 +706,7 @@ export default function Home() {
       return;
     }
 
-    if (!isLoggedIn) {
+    if (!isLoggedIn || !authenticatedUserId) {
       setChats([]);
       setActiveChatId(null);
       setIsSidebarOpen(false);
@@ -717,10 +717,18 @@ export default function Home() {
   useEffect(() => {
     if (isCheckingAuth) return;
 
-    if (!isLoggedIn) {
+    if (!isLoggedIn || !authenticatedUserId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reset auth-dependent profile state when the session ends
       setIsCheckingBirthProfile(false);
       setHasCompleteBirthProfile(false);
+      return;
+    }
+
+    const userId = authenticatedUserId;
+
+    if (verifiedBirthProfileUsers.has(userId)) {
+      setHasCompleteBirthProfile(true);
+      setIsCheckingBirthProfile(false);
       return;
     }
 
@@ -749,21 +757,17 @@ export default function Home() {
 
         const data = (await res.json()) as BirthDetailsStatus;
 
-        if (!res.ok) {
+        if (res.ok && data.exists === false) {
           router.replace("/birth-details");
           return;
         }
 
-        if (data.exists !== true) {
-          router.replace("/birth-details");
-          return;
-        }
-
-        if (isMounted) {
+        if (res.ok && data.exists === true && isMounted) {
+          verifiedBirthProfileUsers.add(userId);
           setHasCompleteBirthProfile(true);
         }
       } catch {
-        router.replace("/birth-details");
+        // Keep the homepage visible. A failed check is not evidence of a missing profile.
       } finally {
         if (isMounted) {
           setIsCheckingBirthProfile(false);
@@ -776,7 +780,7 @@ export default function Home() {
     return () => {
       isMounted = false;
     };
-  }, [getAuthHeaders, isCheckingAuth, isLoggedIn, router]);
+  }, [authenticatedUserId, getAuthHeaders, isCheckingAuth, isLoggedIn, router]);
 
   useEffect(() => {
     const scroller = messagesScrollRef.current;
@@ -824,6 +828,7 @@ export default function Home() {
     async function checkAuth() {
       const { data } = await supabase.auth.getUser();
       setIsLoggedIn(Boolean(data.user));
+      setAuthenticatedUserId(data.user?.id || null);
       syncUserIdentity(data.user);
       setIsCheckingAuth(false);
     }
@@ -834,6 +839,7 @@ export default function Home() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsLoggedIn(Boolean(session?.user));
+      setAuthenticatedUserId(session?.user.id || null);
       syncUserIdentity(session?.user);
       setIsCheckingAuth(false);
     });
@@ -845,16 +851,11 @@ export default function Home() {
 
   useEffect(() => {
     const pendingQuestion = localStorage.getItem(PENDING_QUESTION_KEY);
-    const pendingService = localStorage.getItem(PENDING_SERVICE_KEY);
 
     if (pendingQuestion) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the question saved before the auth redirect
       setQuestion(pendingQuestion);
       localStorage.removeItem(PENDING_QUESTION_KEY);
-    }
-    if (pendingService === "astrology") {
-      setSelectedService("astrology");
-      localStorage.removeItem(PENDING_SERVICE_KEY);
     }
   }, []);
 
@@ -2257,8 +2258,7 @@ export default function Home() {
         className={showMobileLanding ? "hidden min-[600px]:block" : ""}
       />
 
-      {!isPreparingBirthProfile && (
-        <SidebarRail
+      <SidebarRail
           isLoggedIn={isLoggedIn}
           isChatsOpen={isSidebarOpen}
           isProfileMenuOpen={isProfileMenuOpen}
@@ -2268,8 +2268,7 @@ export default function Home() {
           onNewMessage={startNewChat}
           onOpenRecent={() => { setIsProfileMenuOpen(false); setIsSidebarOpen(true); }}
           onToggleProfile={toggleProfileMenu}
-        />
-      )}
+      />
 
       {isLoggedIn && isProfileMenuOpen && <ProfilePopover
         avatarUrl={userAvatarUrl}
@@ -2471,18 +2470,10 @@ export default function Home() {
         </aside>
       </div>
 
-      {isPreparingBirthProfile && (
-        <div className="relative z-10 flex min-h-[100svh] items-center justify-center px-4 text-center">
-          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.05] px-5 py-4 text-[15px] text-white/65 backdrop-blur-2xl">
-            Preparing your Bhagya profile...
-          </div>
-        </div>
-      )}
-
       {/* ══════════════════════════════════════════
           LANDING / FIRST SCREEN
       ══════════════════════════════════════════ */}
-      {!hasStarted && !isPreparingBirthProfile && !isLoggedIn && (
+      {!hasStarted && !isLoggedIn && (
         <div className="block min-[600px]:hidden">
           <UniversalMobileLanding
             question={question}
@@ -2516,7 +2507,7 @@ export default function Home() {
         </div>
       )}
 
-      {!hasStarted && !isPreparingBirthProfile && (
+      {!hasStarted && (
         <div
           className={`bhagya-desktop-shell bhagya-landing relative z-10 min-h-[100svh] flex-col overflow-hidden ${
             !isLoggedIn ? "hidden min-[600px]:flex" : "flex"
@@ -2677,7 +2668,7 @@ export default function Home() {
       {/* ══════════════════════════════════════════
           CHAT SCREEN
       ══════════════════════════════════════════ */}
-      {hasStarted && !isPreparingBirthProfile && (
+      {hasStarted && (
         <div className="relative z-10 flex h-[100dvh] min-h-0 overflow-hidden">
           {/* ── Main chat area ── */}
           <section className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden pl-0 sm:pl-[var(--app-sidebar-width)]">

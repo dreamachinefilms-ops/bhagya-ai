@@ -254,7 +254,8 @@ export async function GET(request: Request) {
     return Response.json({
       success: true,
       exists: Boolean(birthDetails),
-      locked: Boolean(birthDetails),
+      locked: Boolean(birthDetails?.correctionUsed),
+      correctionRemaining: Boolean(birthDetails && !birthDetails.correctionUsed),
       complete: isCompleteBirthProfile({ profile, birthDetails }),
       profile: {
         fullName: birthDetails?.fullName || profile?.fullName || "",

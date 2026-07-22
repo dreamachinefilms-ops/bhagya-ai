@@ -35,7 +35,6 @@ export default function TopNavigation({ accountLink }: { accountLink?: { href: s
         <button type="button" onClick={() => setHoroscopeOpen((open) => !open)} aria-label="Open Horoscope menu" aria-expanded={horoscopeOpen} aria-haspopup="menu" className="rounded-lg px-1.5 py-2 text-white/45 hover:text-sky-200 focus-visible:outline-2 focus-visible:outline-sky-400">⌄</button>
         {horoscopeOpen && <div role="menu" className="absolute left-0 top-[calc(100%+8px)] w-64 rounded-2xl border border-sky-300/15 bg-[#07162b]/[.98] p-2 shadow-2xl shadow-black/35 backdrop-blur-xl">
           <NavDetail href="/horoscope/daily" title="Daily Horoscope" detail="Guidance for your current day" active={pathname === "/horoscope/daily"} onClick={closeAll} />
-          <NavDetail href="/horoscope/love" title="Love Horoscope" detail="Relationship and emotional guidance" active={pathname === "/horoscope/love"} onClick={closeAll} />
         </div>}
       </div>
       {links.map((link) => <Link key={link.href} href={link.href} prefetch aria-current={pathname === link.href ? "page" : undefined} className={itemClass(pathname === link.href)}>{link.label}</Link>)}
@@ -44,7 +43,7 @@ export default function TopNavigation({ accountLink }: { accountLink?: { href: s
     <button type="button" onClick={() => setMobileOpen((open) => !open)} aria-label="Open navigation menu" aria-expanded={mobileOpen} className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[.04] text-lg text-white/70 focus-visible:outline-2 focus-visible:outline-sky-400 lg:hidden">☰</button>
     {mobileOpen && <nav aria-label="Mobile navigation" className="absolute right-0 top-[calc(100%+10px)] w-[min(290px,calc(100vw-24px))] rounded-2xl border border-sky-300/15 bg-[#07162b]/[.98] p-2 shadow-2xl shadow-black/35 backdrop-blur-xl lg:hidden">
       <Link href="/horoscope" prefetch onClick={closeAll} className={itemClass(horoscopeActive)}>Horoscope</Link>
-      <div className="ml-3 border-l border-white/10 pl-2"><NavDetail href="/horoscope/daily" title="Daily Horoscope" detail="Guidance for your day" active={pathname === "/horoscope/daily"} onClick={closeAll} /><NavDetail href="/horoscope/love" title="Love Horoscope" detail="Love and relationship guidance" active={pathname === "/horoscope/love"} onClick={closeAll} /></div>
+      <div className="ml-3 border-l border-white/10 pl-2"><NavDetail href="/horoscope/daily" title="Daily Horoscope" detail="Guidance for your day" active={pathname === "/horoscope/daily"} onClick={closeAll} /></div>
       {links.map((link) => <Link key={link.href} href={link.href} prefetch onClick={closeAll} aria-current={pathname === link.href ? "page" : undefined} className={`mt-1 block ${itemClass(pathname === link.href)}`}>{link.label}</Link>)}
       <div className="mt-2 border-t border-white/[.08] pt-2"><Link href="/settings" prefetch onClick={closeAll} className={`block ${itemClass(pathname === "/settings")}`}>Settings</Link></div>
       {accountLink && <Link href={accountLink.href} prefetch onClick={closeAll} className={`mt-1 block ${itemClass(pathname === accountLink.href)}`}>{accountLink.label}</Link>}

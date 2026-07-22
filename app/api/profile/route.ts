@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     ]);
     if (error) throw error;
     const fullName = profile?.full_name || user.user_metadata?.full_name || "";
-    return NextResponse.json({ profile: { fullName, firstName: getUserFirstName({ preferredFirstName: profile?.first_name, fullName }), email: user.email || "", createdAt: profile?.created_at || user.created_at, birthDetails: birthDetails ? { fullName: birthDetails.fullName || fullName, dateOfBirth: birthDetails.dateOfBirth || "", birthTime: birthDetails.birthTime || "", birthTimeKnown: birthDetails.birthTimeKnown !== false, birthPlace: birthDetails.birthPlace || "" } : null } });
+    return NextResponse.json({ profile: { fullName, firstName: getUserFirstName({ preferredFirstName: profile?.first_name, fullName }), email: user.email || "", createdAt: profile?.created_at || user.created_at, birthDetails: birthDetails ? { fullName: birthDetails.fullName || fullName, dateOfBirth: birthDetails.dateOfBirth || "", birthTime: birthDetails.birthTime || "", birthTimeKnown: birthDetails.birthTimeKnown !== false, birthPlace: birthDetails.birthPlace || "", correctionUsed: birthDetails.correctionUsed === true, correctedAt: birthDetails.correctedAt || null } : null } });
   } catch (error) {
     console.error("[profile] load failed", error);
     return NextResponse.json({ error: "PROFILE_LOAD_FAILED", message: "Your profile could not be loaded. Please try again." }, { status: 500 });

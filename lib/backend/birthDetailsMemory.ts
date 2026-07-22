@@ -11,6 +11,9 @@ export type SavedBirthDetails = {
   longitude?: number | null;
   timezoneOffset?: string | null;
   timezoneId?: string | null;
+  correctionUsed?: boolean;
+  correctedAt?: string | null;
+  correctionVersion?: number;
 };
 
 export type SavedUserProfile = {
@@ -139,7 +142,7 @@ export async function getSavedBirthDetails({
   let { data, error } = await supabase
     .from("user_birth_details")
     .select(
-      "id,full_name,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset,timezone_id"
+      "id,full_name,date_of_birth,birth_time,birth_time_known,birth_place,latitude,longitude,timezone_offset,timezone_id,correction_used,corrected_at,correction_version"
     )
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
@@ -160,7 +163,7 @@ export async function getSavedBirthDetails({
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    data = legacy.data ? { ...legacy.data, full_name: null } : null;
+    data = legacy.data ? { ...legacy.data, full_name: null, correction_used: false, corrected_at: null, correction_version: 0 } : null;
     error = legacy.error;
   }
 
@@ -182,6 +185,9 @@ export async function getSavedBirthDetails({
     longitude: data.longitude,
     timezoneOffset: data.timezone_offset,
     timezoneId: data.timezone_id,
+    correctionUsed: data.correction_used === true,
+    correctedAt: data.corrected_at,
+    correctionVersion: Number(data.correction_version || 0),
   };
 }
 
@@ -254,5 +260,7 @@ export function toBirthDetailsResponse(details: SavedBirthDetails | null) {
     longitude: details.longitude ?? undefined,
     timezoneOffset: details.timezoneOffset ?? undefined,
     timezoneId: details.timezoneId ?? undefined,
+    correctionUsed: details.correctionUsed === true,
+    correctedAt: details.correctedAt ?? null,
   };
 }

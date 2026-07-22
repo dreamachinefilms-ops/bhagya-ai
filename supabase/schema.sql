@@ -22,6 +22,9 @@ create table if not exists public.user_birth_details (
   longitude numeric,
   timezone_offset text,
   timezone_id text,
+  correction_used boolean not null default false,
+  corrected_at timestamptz,
+  correction_version integer not null default 0,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
