@@ -38,6 +38,7 @@ import type {
   TarotSpreadType,
 } from "@/lib/tarot/reading";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
+import { useSettingsProfile } from "@/components/providers/SettingsProfileProvider";
 
 type ServiceType = "numerology" | "tarot" | "palmistry" | "astrology";
 
@@ -478,6 +479,7 @@ function timeAgo(ts: number, labels: UiText["timeAgo"]) {
 export default function Home() {
   const router = useRouter();
   const { preferences, isLoading: isLoadingPreferences, isAuthenticated: hasPreferenceSession, updatePreferences } = useUserPreferences();
+  const { profile: cachedProfile, sessionUser: cachedSessionUser } = useSettingsProfile();
 
   const [selectedService, setSelectedService] =
     useState<ServiceType>("astrology");
@@ -512,10 +514,13 @@ export default function Home() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isLoadingChats, setIsLoadingChats] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userInitials, setUserInitials] = useState("ME");
   const [userAvatarUrl, setUserAvatarUrl] = useState("");
+  const [userDisplayName, setUserDisplayName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isCheckingBirthProfile, setIsCheckingBirthProfile] = useState(false);
   const [hasCompleteBirthProfile, setHasCompleteBirthProfile] =
@@ -530,6 +535,9 @@ export default function Home() {
   const palmVisualMapRequestRef = useRef(0);
   const palmScanObjectUrlRef = useRef<string | null>(null);
   const numerologyInitializationRef = useRef<Set<string>>(new Set());
+  const desktopProfileButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileProfileButtonRef = useRef<HTMLButtonElement>(null);
+  const profileMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const activeChatHasPalmImage = chatHasPalmImage(activeChat);
@@ -548,6 +556,18 @@ export default function Home() {
   const selectedLanguageLabel =
     languages.find((lang) => lang.code === selectedLanguage)?.label ||
     "English";
+  const profileMenuName = cachedProfile?.firstName || cachedProfile?.fullName || cachedSessionUser?.fullName || userDisplayName;
+  const profileMenuEmail = cachedProfile?.email || cachedSessionUser?.email || userEmail;
+
+  const toggleProfileMenu = useCallback((trigger: HTMLButtonElement) => {
+    profileMenuTriggerRef.current = trigger;
+    setIsProfileMenuOpen((open) => !open);
+  }, []);
+
+  const closeProfileMenu = useCallback((restoreFocus = false) => {
+    setIsProfileMenuOpen(false);
+    if (restoreFocus) window.requestAnimationFrame(() => profileMenuTriggerRef.current?.focus());
+  }, []);
 
   useEffect(() => {
     if (!isLoggedIn || isLoadingPreferences || !hasPreferenceSession || activeChatId) return;
@@ -795,6 +815,8 @@ export default function Home() {
         (typeof metadata?.picture === "string" && metadata.picture) || "";
       setUserInitials(initials || "ME");
       setUserAvatarUrl(avatarUrl);
+      setUserDisplayName(displayName);
+      setUserEmail(user?.email || "");
     }
 
     async function checkAuth() {
@@ -839,6 +861,7 @@ export default function Home() {
   }, []);
 
   function startNewChat() {
+    setIsProfileMenuOpen(false);
     setActiveChatId(null);
     setQuestion("");
     setPalmImage(null);
@@ -2231,12 +2254,28 @@ export default function Home() {
         <SidebarRail
           isLoggedIn={isLoggedIn}
           isChatsOpen={isSidebarOpen}
+          isProfileMenuOpen={isProfileMenuOpen}
           userInitials={userInitials}
           userAvatarUrl={userAvatarUrl}
+          profileButtonRef={desktopProfileButtonRef}
           onNewMessage={startNewChat}
-          onOpenRecent={() => setIsSidebarOpen(true)}
+          onOpenRecent={() => { setIsProfileMenuOpen(false); setIsSidebarOpen(true); }}
+          onToggleProfile={toggleProfileMenu}
         />
       )}
+
+      {isLoggedIn && isProfileMenuOpen && <ProfilePopover
+        avatarUrl={userAvatarUrl}
+        initials={userInitials}
+        name={profileMenuName}
+        email={profileMenuEmail}
+        language={selectedLanguageLabel}
+        desktopTriggerRef={desktopProfileButtonRef}
+        mobileTriggerRef={mobileProfileButtonRef}
+        onClose={closeProfileMenu}
+        onLanguageToggle={() => { const nextLanguage: LanguageCode = selectedLanguage === "english" ? "hindi" : "english"; setSelectedLanguage(nextLanguage); void updatePreferences({ language: nextLanguage === "hindi" ? "hi" : "en" }); }}
+        onLogout={() => { closeProfileMenu(); void logoutUser(); }}
+      />}
 
       {/* ── Subtle vignette overlay ── */}
       <div
@@ -2417,7 +2456,7 @@ export default function Home() {
             })}
           </div>
           {isLoggedIn && <div className="border-t border-white/[0.07] p-3">
-            <Link href="/settings" onClick={() => setIsSidebarOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-white/60 transition hover:bg-white/[0.05] hover:text-sky-200">
+            <Link href="/settings" prefetch onClick={() => setIsSidebarOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-white/60 transition hover:bg-white/[0.05] hover:text-sky-200">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15 text-sky-300">⚙</span>
               Profile & Settings
             </Link>
@@ -2709,7 +2748,7 @@ export default function Home() {
 
                 {isLoggedIn ? (
                   <>
-                    <Link href="/settings" aria-label="Profile & Settings" title="Profile & Settings" className="flex h-9 w-9 items-center justify-center rounded-full border border-sky-400/20 bg-sky-500/10 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/20 sm:hidden">{userInitials}</Link>
+                    <button ref={mobileProfileButtonRef} type="button" onClick={(event) => toggleProfileMenu(event.currentTarget)} aria-label="Open profile" aria-expanded={isProfileMenuOpen} aria-haspopup="menu" title="Profile" className="flex h-9 w-9 items-center justify-center rounded-full border border-sky-400/20 bg-sky-500/10 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 sm:hidden">{userInitials}</button>
                     <button onClick={logoutUser} className="bhagya-pill-btn hidden text-[12px] text-white/60 transition hover:text-sky-300 sm:inline-flex">{t.logout}</button>
                   </>
                 ) : (
@@ -3092,6 +3131,47 @@ export default function Home() {
           letter-spacing: 0.04em;
         }
 
+        .bhagya-profile-popover {
+          left: calc(var(--app-sidebar-width) + 10px);
+          bottom: calc(env(safe-area-inset-bottom) + 10px);
+          width: clamp(230px, 22vw, 285px);
+          border: 1px solid rgba(91,165,218,0.18);
+          border-radius: 16px;
+          background: linear-gradient(160deg, rgba(9,24,45,0.985), rgba(4,14,31,0.985));
+          padding: 14px;
+          box-shadow: 0 18px 50px rgba(0,0,0,0.34);
+          backdrop-filter: blur(18px);
+          animation: bhagya-profile-popover-in 150ms ease-out both;
+        }
+
+        .bhagya-profile-menu-row {
+          display: flex;
+          min-height: 44px;
+          align-items: center;
+          gap: 10px;
+          border-radius: 10px;
+          padding: 0 10px;
+          color: rgba(218,235,248,0.76);
+          font-size: 13px;
+          transition: background-color 150ms ease, color 150ms ease;
+        }
+
+        .bhagya-profile-menu-row:hover,
+        .bhagya-profile-menu-row:focus-visible {
+          background: rgba(56,189,248,0.09);
+          color: rgba(235,248,255,0.96);
+          outline: none;
+        }
+
+        .bhagya-profile-menu-row:focus-visible {
+          box-shadow: inset 0 0 0 1px rgba(56,189,248,0.28);
+        }
+
+        @keyframes bhagya-profile-popover-in {
+          from { opacity: 0; transform: translateY(6px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
         .bhagya-rail-tooltip {
           pointer-events: none;
           position: absolute;
@@ -3142,10 +3222,25 @@ export default function Home() {
           .bhagya-rail-tooltip { display: none; }
         }
 
+        @media (max-width: 639px) {
+          .bhagya-profile-popover {
+            left: max(12px, env(safe-area-inset-left));
+            right: max(12px, env(safe-area-inset-right));
+            bottom: max(12px, env(safe-area-inset-bottom));
+            width: auto;
+            max-height: min(390px, calc(100dvh - 24px));
+            overflow-y: auto;
+            border-radius: 18px;
+            padding-bottom: max(14px, env(safe-area-inset-bottom));
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .bhagya-rail-btn,
           .bhagya-sidebar-logo,
-          .bhagya-rail-tooltip { transition: none; }
+          .bhagya-rail-tooltip,
+          .bhagya-profile-menu-row { transition: none; }
+          .bhagya-profile-popover { animation: none; }
         }
 
         @media (max-width: 639px) {
@@ -4548,17 +4643,23 @@ function RailIcon({ children }: { children: ReactNode }) {
 function SidebarRail({
   isLoggedIn,
   isChatsOpen,
+  isProfileMenuOpen,
   userInitials,
   userAvatarUrl,
+  profileButtonRef,
   onNewMessage,
   onOpenRecent,
+  onToggleProfile,
 }: {
   isLoggedIn: boolean;
   isChatsOpen: boolean;
+  isProfileMenuOpen: boolean;
   userInitials: string;
   userAvatarUrl: string;
+  profileButtonRef: RefObject<HTMLButtonElement | null>;
   onNewMessage: () => void;
   onOpenRecent: () => void;
+  onToggleProfile: (trigger: HTMLButtonElement) => void;
 }) {
   return (
     <nav
@@ -4609,28 +4710,105 @@ function SidebarRail({
 
       <div className="flex-1" />
 
-      <Link
-        href={isLoggedIn ? "/settings" : "/login"}
+      {isLoggedIn ? <button
+        ref={profileButtonRef}
+        type="button"
+        onClick={(event) => onToggleProfile(event.currentTarget)}
         className="bhagya-sidebar-avatar group relative"
-        aria-label="Profile and settings"
+        aria-label="Open profile"
+        aria-expanded={isProfileMenuOpen}
+        aria-haspopup="menu"
       >
-        {isLoggedIn && userAvatarUrl ? (
+        {userAvatarUrl ? (
           <img src={userAvatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
-        ) : isLoggedIn ? (
-          userInitials.charAt(0)
         ) : (
+          userInitials.charAt(0)
+        )}
+        <span className="bhagya-rail-tooltip">Profile</span>
+      </button> : <Link href="/login" className="bhagya-sidebar-avatar group relative" aria-label="Sign in">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
             <circle cx="12" cy="8" r="4" />
             <path d="M4 21a8 8 0 0 1 16 0" />
           </svg>
-        )}
-        <span className="bhagya-rail-tooltip">Profile &amp; Settings</span>
-      </Link>
+        <span className="bhagya-rail-tooltip">Sign in</span>
+      </Link>}
     </nav>
   );
 }
 
 /* ── Chat input composer ── */
+function ProfilePopover({
+  avatarUrl,
+  initials,
+  name,
+  email,
+  language,
+  desktopTriggerRef,
+  mobileTriggerRef,
+  onClose,
+  onLanguageToggle,
+  onLogout,
+}: {
+  avatarUrl: string;
+  initials: string;
+  name: string;
+  email: string;
+  language: string;
+  desktopTriggerRef: RefObject<HTMLButtonElement | null>;
+  mobileTriggerRef: RefObject<HTMLButtonElement | null>;
+  onClose: (restoreFocus?: boolean) => void;
+  onLanguageToggle: () => void;
+  onLogout: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const menu = menuRef.current;
+    const firstItem = menu?.querySelector<HTMLElement>("[role='menuitem']");
+    const focusFrame = window.requestAnimationFrame(() => firstItem?.focus());
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (menu?.contains(target) || desktopTriggerRef.current?.contains(target) || mobileTriggerRef.current?.contains(target)) return;
+      onClose(true);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") { event.preventDefault(); onClose(true); return; }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      const items = Array.from(menu?.querySelectorAll<HTMLElement>("[role='menuitem']") || []);
+      if (!items.length) return;
+      event.preventDefault();
+      const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+      const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : event.key === "ArrowDown" ? (currentIndex + 1) % items.length : (currentIndex <= 0 ? items.length : currentIndex) - 1;
+      items[nextIndex]?.focus();
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [desktopTriggerRef, mobileTriggerRef, onClose]);
+
+  return <div ref={menuRef} role="menu" aria-label="Profile" className="bhagya-profile-popover fixed z-[70]">
+    <p className="px-1 pb-3 text-[10px] font-semibold uppercase tracking-[.2em] text-sky-300/65">Profile</p>
+    <div className="flex min-w-0 items-center gap-3 px-1 pb-4">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-sky-300/30 bg-gradient-to-br from-cyan-500 to-blue-700 text-xs font-bold text-white">
+        {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" /> : initials ? initials.charAt(0) : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>}
+      </div>
+      <div className="min-w-0"><p className="truncate text-sm font-semibold text-white/90">{name || "Your profile"}</p><p className="truncate text-xs text-white/40">{email}</p></div>
+    </div>
+    <div className="border-y border-white/[.07] py-1.5">
+      <Link href="/settings" prefetch role="menuitem" onClick={() => onClose()} className="bhagya-profile-menu-row"><span aria-hidden="true">⚙</span><span className="flex-1">Settings</span><span aria-hidden="true" className="text-white/25">›</span></Link>
+      <button type="button" role="menuitem" onClick={onLanguageToggle} className="bhagya-profile-menu-row w-full"><span aria-hidden="true">◎</span><span className="flex-1 text-left">Language</span><span className="text-xs text-white/40">{language}</span></button>
+    </div>
+    <button type="button" role="menuitem" onClick={onLogout} className="bhagya-profile-menu-row mt-1.5 w-full text-rose-200/75"><span aria-hidden="true">↪</span><span className="flex-1 text-left">Log out</span></button>
+  </div>;
+}
+
 function ChatInput({
   question,
   setQuestion,

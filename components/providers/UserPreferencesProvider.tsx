@@ -1,12 +1,13 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { DEFAULT_USER_PREFERENCES, type UserPreferences } from "@/lib/userPreferences";
 
 type UserPreferencesContextValue = {
   preferences: UserPreferences;
   isLoading: boolean;
+  hasLoaded: boolean;
   isSaving: boolean;
   error: string | null;
   isAuthenticated: boolean;
@@ -24,28 +25,40 @@ async function authHeaders() {
 export function UserPreferencesProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState(DEFAULT_USER_PREFERENCES);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const hasLoadedRef = useRef(false);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
 
   const refreshPreferences = useCallback(async () => {
-    const headers = await authHeaders();
-    if (!headers) { setIsAuthenticated(false); setIsLoading(false); return; }
-    setIsAuthenticated(true); setIsLoading(true); setError(null);
-    try {
-      const response = await fetch("/api/settings", { headers });
-      const data = await response.json() as { preferences?: UserPreferences; message?: string };
-      if (!response.ok || !data.preferences) throw new Error(data.message);
-      setPreferences(data.preferences);
-    } catch { setError("Your settings could not be loaded. Please try again."); }
-    finally { setIsLoading(false); }
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const refresh = (async () => {
+      const headers = await authHeaders();
+      if (!headers) { setIsAuthenticated(false); setIsLoading(false); return; }
+      setIsAuthenticated(true);
+      if (!hasLoadedRef.current) setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/settings", { headers });
+        const data = await response.json() as { preferences?: UserPreferences; message?: string };
+        if (!response.ok || !data.preferences) throw new Error(data.message);
+        setPreferences(data.preferences);
+        hasLoadedRef.current = true;
+        setHasLoaded(true);
+      } catch { setError("Your preferences could not be loaded. Please try again."); }
+      finally { setIsLoading(false); }
+    })();
+    refreshInFlightRef.current = refresh;
+    try { await refresh; }
+    finally { if (refreshInFlightRef.current === refresh) refreshInFlightRef.current = null; }
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate the account-scoped provider after the browser session is available
     void refreshPreferences();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") { setIsAuthenticated(false); setPreferences(DEFAULT_USER_PREFERENCES); setIsLoading(false); }
+      if (event === "SIGNED_OUT") { hasLoadedRef.current = false; setHasLoaded(false); setIsAuthenticated(false); setPreferences(DEFAULT_USER_PREFERENCES); setIsLoading(false); }
       else if (event !== "INITIAL_SESSION") void refreshPreferences();
     });
     return () => subscription.unsubscribe();
@@ -65,7 +78,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
     finally { setIsSaving(false); }
   }, [preferences]);
 
-  const value = useMemo(() => ({ preferences, isLoading, isSaving, error, isAuthenticated, updatePreferences, refreshPreferences }), [preferences, isLoading, isSaving, error, isAuthenticated, updatePreferences, refreshPreferences]);
+  const value = useMemo(() => ({ preferences, isLoading, hasLoaded, isSaving, error, isAuthenticated, updatePreferences, refreshPreferences }), [preferences, isLoading, hasLoaded, isSaving, error, isAuthenticated, updatePreferences, refreshPreferences]);
   return <UserPreferencesContext.Provider value={value}>{children}</UserPreferencesContext.Provider>;
 }
 
