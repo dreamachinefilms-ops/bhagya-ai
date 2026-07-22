@@ -6,15 +6,23 @@ import { validatePreferencesPatch } from "@/lib/userPreferences";
 
 const unauthorized = () => NextResponse.json({ error: "AUTH_REQUIRED", message: "Your session has expired. Please sign in again." }, { status: 401 });
 
-function logSettingsFailure(operation: "load" | "save", error: unknown) {
+type SupabaseErrorLike = { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
+
+function isSettingsStorageNotConfigured(error: unknown) {
+  const code = (error as SupabaseErrorLike)?.code;
+  return code === "PGRST205" || code === "PGRST204" || code === "42P01" || code === "42703";
+}
+
+function logSettingsFailure(operation: "preference select/default-row creation" | "preference upsert", error: unknown) {
   if (process.env.NODE_ENV === "production") return;
-  const details = error as { code?: unknown; message?: unknown };
-  console.error("[settings] request failed", {
+  const details = error as SupabaseErrorLike;
+  console.error("[Settings API] Request failed", {
     operation,
     authenticated: true,
-    code: typeof details?.code === "string" ? details.code : undefined,
-    message: typeof details?.message === "string" ? details.message : undefined,
-    query: operation === "load" ? "user_preferences.select/upsert(<authenticated-user>)" : "user_preferences.update(<authenticated-user>)",
+    databaseCode: typeof details?.code === "string" ? details.code : undefined,
+    databaseMessage: typeof details?.message === "string" ? details.message : undefined,
+    databaseDetails: typeof details?.details === "string" ? details.details : undefined,
+    databaseHint: typeof details?.hint === "string" ? details.hint : undefined,
   });
 }
 
@@ -27,8 +35,9 @@ export async function GET(request: Request) {
     const preferences = await getOrCreateUserPreferences({ request, userId: user.id, legacyLanguage: profile?.preferred_language });
     return NextResponse.json({ preferences });
   } catch (error) {
-    logSettingsFailure("load", error);
-    return NextResponse.json({ error: "SETTINGS_LOAD_FAILED", message: "Your settings could not be loaded." }, { status: 500 });
+    logSettingsFailure("preference select/default-row creation", error);
+    if (isSettingsStorageNotConfigured(error)) return NextResponse.json({ error: "SETTINGS_STORAGE_NOT_CONFIGURED", message: "Settings storage is not configured yet." }, { status: 503 });
+    return NextResponse.json({ error: "SETTINGS_LOAD_FAILED", message: "Your preferences could not be loaded." }, { status: 500 });
   }
 }
 
@@ -44,7 +53,8 @@ export async function PATCH(request: Request) {
     const preferences = await updateUserPreferences({ request, userId: user.id, patch });
     return NextResponse.json({ preferences });
   } catch (error) {
-    logSettingsFailure("save", error);
+    logSettingsFailure("preference upsert", error);
+    if (isSettingsStorageNotConfigured(error)) return NextResponse.json({ error: "SETTINGS_STORAGE_NOT_CONFIGURED", message: "Settings storage is not configured yet." }, { status: 503 });
     return NextResponse.json({ error: "SETTINGS_SAVE_FAILED", message: "Your settings could not be saved. Please try again." }, { status: 500 });
   }
 }

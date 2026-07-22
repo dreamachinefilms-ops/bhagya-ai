@@ -32,8 +32,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     void loadProfile();
-    void refreshPreferences();
-  }, [loadProfile, refreshPreferences]);
+  }, [loadProfile]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate the editable draft when the account-scoped cache updates
