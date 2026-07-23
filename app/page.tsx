@@ -2217,7 +2217,7 @@ export default function Home() {
             className="absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full border border-sky-400/10"
             style={{
               width: "min(118vw, 900px)",
-              animation: "centeredSpinCCW 280s linear infinite",
+              animation: "spinCCW 280s linear infinite",
             }}
           />
 
@@ -2226,7 +2226,7 @@ export default function Home() {
             className="absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full border border-sky-400/10"
             style={{
               width: "min(102vw, 660px)",
-              animation: "centeredSpinCW 200s linear infinite",
+              animation: "spinCW 200s linear infinite",
             }}
           />
 
@@ -2236,7 +2236,7 @@ export default function Home() {
             style={{
               width: "min(92vw, 720px)",
               backgroundImage: "url('/mandala.png?v=20260723-name-free')",
-              animation: "centeredSpinCW 180s linear infinite",
+              animation: "spinCW 180s linear infinite",
               filter: "hue-rotate(185deg) saturate(1.6) brightness(1.15)",
             }}
           />
@@ -3021,16 +3021,6 @@ export default function Home() {
         @keyframes spinCCW {
           from { transform: rotate(0deg); }
           to   { transform: rotate(-360deg); }
-        }
-
-        @keyframes centeredSpinCW {
-          from { transform: translate(-50%, -50%) rotate(0deg); }
-          to   { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-
-        @keyframes centeredSpinCCW {
-          from { transform: translate(-50%, -50%) rotate(0deg); }
-          to   { transform: translate(-50%, -50%) rotate(-360deg); }
         }
 
         @keyframes pulse {
