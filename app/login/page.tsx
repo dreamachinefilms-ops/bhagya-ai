@@ -264,7 +264,7 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         <div
           className="h-[760px] w-[760px] rounded-full bg-contain bg-center bg-no-repeat opacity-[0.18]"
           style={{
-            backgroundImage: "url('/mandala.png')",
+            backgroundImage: "url('/mandala.png?v=20260723-name-free')",
             animation: "spinCW 190s linear infinite",
             filter: "hue-rotate(185deg) saturate(1.8) brightness(1.15)",
           }}

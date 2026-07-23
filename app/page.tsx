@@ -2235,7 +2235,7 @@ export default function Home() {
             className="absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full bg-contain bg-center bg-no-repeat opacity-[0.20] mix-blend-screen"
             style={{
               width: "min(92vw, 720px)",
-              backgroundImage: "url('/mandala.png')",
+              backgroundImage: "url('/mandala.png?v=20260723-name-free')",
               animation: "spinCW 180s linear infinite",
               filter: "hue-rotate(185deg) saturate(1.6) brightness(1.15)",
             }}

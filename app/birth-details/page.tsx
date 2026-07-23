@@ -335,7 +335,7 @@ export default function BirthDetailsPage() {
           className="absolute aspect-square rounded-full bg-contain bg-center bg-no-repeat opacity-[0.14] mix-blend-screen"
           style={{
             width: "min(88vw, 680px)",
-            backgroundImage: "url('/mandala.png')",
+            backgroundImage: "url('/mandala.png?v=20260723-name-free')",
             animation: "spinCW 190s linear infinite",
             filter: "hue-rotate(185deg) saturate(1.6) brightness(1.15)",
           }}
