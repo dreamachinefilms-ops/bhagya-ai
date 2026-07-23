@@ -2,16 +2,12 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/backend/auth";
 import { createSupabaseUserClient } from "@/lib/backend/supabaseUserClient";
 import { getOrCreateUserPreferences, updateUserPreferences } from "@/lib/backend/userPreferences";
-import { validatePreferencesPatch } from "@/lib/userPreferences";
+import { isSupabaseSchemaUnavailable } from "@/lib/backend/supabaseErrors";
+import { DEFAULT_USER_PREFERENCES, validatePreferencesPatch } from "@/lib/userPreferences";
 
 const unauthorized = () => NextResponse.json({ error: "AUTH_REQUIRED", message: "Your session has expired. Please sign in again." }, { status: 401 });
 
 type SupabaseErrorLike = { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
-
-function isSettingsStorageNotConfigured(error: unknown) {
-  const code = (error as SupabaseErrorLike)?.code;
-  return code === "PGRST205" || code === "PGRST204" || code === "42P01" || code === "42703";
-}
 
 function logSettingsFailure(operation: "preference select/default-row creation" | "preference upsert", error: unknown) {
   if (process.env.NODE_ENV === "production") return;
@@ -36,7 +32,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ preferences });
   } catch (error) {
     logSettingsFailure("preference select/default-row creation", error);
-    if (isSettingsStorageNotConfigured(error)) return NextResponse.json({ error: "SETTINGS_STORAGE_NOT_CONFIGURED", message: "Settings storage is not configured yet." }, { status: 503 });
+    if (isSupabaseSchemaUnavailable(error)) {
+      return NextResponse.json({
+        preferences: DEFAULT_USER_PREFERENCES,
+        storageAvailable: false,
+      });
+    }
     return NextResponse.json({ error: "SETTINGS_LOAD_FAILED", message: "Your preferences could not be loaded." }, { status: 500 });
   }
 }
@@ -54,7 +55,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ preferences });
   } catch (error) {
     logSettingsFailure("preference upsert", error);
-    if (isSettingsStorageNotConfigured(error)) return NextResponse.json({ error: "SETTINGS_STORAGE_NOT_CONFIGURED", message: "Settings storage is not configured yet." }, { status: 503 });
+    if (isSupabaseSchemaUnavailable(error)) return NextResponse.json({ error: "SETTINGS_STORAGE_NOT_CONFIGURED", message: "Settings storage is not configured yet." }, { status: 503 });
     return NextResponse.json({ error: "SETTINGS_SAVE_FAILED", message: "Your settings could not be saved. Please try again." }, { status: 500 });
   }
 }
