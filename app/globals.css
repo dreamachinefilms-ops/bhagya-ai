@@ -74,10 +74,17 @@ input {
 }
 
 .bhagya-mandala-stage {
+  left: 50%;
   top: 50%;
   width: 100%;
   height: 100%;
   transform: translate(-50%, -50%);
+}
+
+@media (min-width: 640px) {
+  .bhagya-mandala-stage {
+    left: calc(50% + (var(--app-sidebar-width) / 2));
+  }
 }
 
 @supports (height: 100dvh) {

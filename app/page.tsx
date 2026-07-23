@@ -2211,7 +2211,7 @@ export default function Home() {
           showMobileLanding ? "hidden min-[600px]:block" : ""
         }`}
       >
-        <div className="bhagya-mandala-stage absolute left-1/2">
+        <div className="bhagya-mandala-stage absolute">
           {/* Outer orbit */}
           <div
             className="absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full border border-sky-400/10"
